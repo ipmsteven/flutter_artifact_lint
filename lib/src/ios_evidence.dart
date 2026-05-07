@@ -9,11 +9,13 @@ class EvidenceReport {
     required this.tokens,
     required this.sourcesByToken,
     required this.scannedFiles,
+    required this.buildVersions,
   });
 
   final Set<String> tokens;
   final Map<String, Set<String>> sourcesByToken;
   final List<String> scannedFiles;
+  final List<MachOBuildVersionEvidence> buildVersions;
 
   List<String> matched(List<String> candidates) {
     return candidates.where(tokens.contains).toList();
@@ -28,6 +30,16 @@ class EvidenceReport {
     }
     return result;
   }
+}
+
+class MachOBuildVersionEvidence {
+  const MachOBuildVersionEvidence({
+    required this.sourcePath,
+    required this.buildVersion,
+  });
+
+  final String sourcePath;
+  final MachOBuildVersion buildVersion;
 }
 
 class IosEvidenceExtractor {
@@ -46,6 +58,7 @@ class IosEvidenceExtractor {
     final found = <String>{};
     final sources = <String, Set<String>>{};
     final scannedFiles = <String>[];
+    final buildVersions = <MachOBuildVersionEvidence>[];
 
     void addEvidence(String token, String sourcePath) {
       found.add(token);
@@ -70,7 +83,8 @@ class IosEvidenceExtractor {
       if (bytes.isEmpty) continue;
 
       scannedFiles.add(entity.path);
-      for (final dylib in const MachOParser().parse(bytes).linkedDylibs) {
+      final machoReport = const MachOParser().parse(bytes);
+      for (final dylib in machoReport.linkedDylibs) {
         final frameworkToken = _frameworkToken(dylib.path);
         if (frameworkToken != null) addEvidence(frameworkToken, entity.path);
         if (_isPrivateFrameworkPath(dylib.path)) {
@@ -78,9 +92,17 @@ class IosEvidenceExtractor {
         }
       }
 
-      final text = _asciiText(bytes);
-      for (final token in tokens) {
-        if (text.contains(token)) addEvidence(token, entity.path);
+      for (final buildVersion in machoReport.buildVersions) {
+        buildVersions.add(
+          MachOBuildVersionEvidence(
+            sourcePath: entity.path,
+            buildVersion: buildVersion,
+          ),
+        );
+      }
+
+      for (final token in _scanTextTokens(entity, tokens)) {
+        addEvidence(token, entity.path);
       }
     }
 
@@ -88,6 +110,7 @@ class IosEvidenceExtractor {
       tokens: found,
       sourcesByToken: sources,
       scannedFiles: scannedFiles,
+      buildVersions: buildVersions,
     );
   }
 
@@ -118,6 +141,47 @@ class IosEvidenceExtractor {
       '.storyboardc',
     }.contains(ext);
   }
+}
+
+Set<String> _scanTextTokens(File file, List<String> tokens) {
+  if (tokens.isEmpty) return const {};
+
+  final found = <String>{};
+  final longestToken = tokens
+      .map((token) => token.length)
+      .fold<int>(0, (longest, length) => length > longest ? length : longest);
+  final carryLength = longestToken > 0 ? longestToken - 1 : 0;
+  var carry = '';
+
+  try {
+    final raf = file.openSync();
+    try {
+      while (true) {
+        final bytes = raf.readSync(64 * 1024);
+        if (bytes.isEmpty) break;
+
+        final text = carry + _asciiText(bytes);
+        for (final token in tokens) {
+          if (!found.contains(token) && text.contains(token)) {
+            found.add(token);
+          }
+        }
+
+        if (found.length == tokens.length) break;
+        carry = carryLength == 0
+            ? ''
+            : text.substring(
+                text.length > carryLength ? text.length - carryLength : 0,
+              );
+      }
+    } finally {
+      raf.closeSync();
+    }
+  } catch (_) {
+    return found;
+  }
+
+  return found;
 }
 
 String? _frameworkToken(String dylibPath) {

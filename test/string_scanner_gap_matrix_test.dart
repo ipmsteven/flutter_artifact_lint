@@ -72,19 +72,23 @@ void main() {
     });
   });
 
-  group('known String Scanner gaps', () {
+  group('Mach-O build metadata parser acceptance', () {
     test(
-      'misses deployment target metadata stored as LC_BUILD_VERSION fields',
+      'reports deployment target metadata stored as LC_BUILD_VERSION fields',
       () async {
         final result = await _scanAppWithMainBinary(_machOBuildVersionBytes());
-
-        expect(
-          _ruleIds(result.findings),
-          isNot(contains('ios.macho.deployment_target.too_low')),
+        final finding = result.info.singleWhere(
+          (finding) => finding.ruleId == 'ios.macho.build_version',
         );
+
+        expect(finding.message, contains('iOS'));
+        expect(finding.message, contains('minimum OS 12.0.0'));
+        expect(finding.message, contains('SDK 17.0.0'));
       },
     );
+  });
 
+  group('known String Scanner gaps', () {
     test(
       'misses push capability when evidence only exists in signed-artifact entitlements',
       () async {

@@ -436,6 +436,8 @@ List<LintFinding> _binaryEvidenceRules(
   );
   final findings = <LintFinding>[];
 
+  findings.addAll(_machoBuildVersionInfo(evidence));
+
   void warnMissingPermission({
     required String ruleId,
     required List<String> plistKeys,
@@ -685,6 +687,24 @@ List<String> _privateFrameworkEvidence(EvidenceReport evidence) {
       .where((token) => token.contains('/PrivateFrameworks/'))
       .toList()
     ..sort();
+}
+
+List<LintFinding> _machoBuildVersionInfo(EvidenceReport evidence) {
+  return evidence.buildVersions
+      .map(
+        (buildVersionEvidence) => buildFinding(
+          'ios.macho.build_version',
+          message:
+              '${buildVersionEvidence.buildVersion.platformName} minimum OS ${buildVersionEvidence.buildVersion.minimumOsVersion}, SDK ${buildVersionEvidence.buildVersion.sdkVersion}.',
+          path: buildVersionEvidence.sourcePath,
+          evidence: [
+            buildVersionEvidence.buildVersion.platformName,
+            buildVersionEvidence.buildVersion.minimumOsVersion,
+            buildVersionEvidence.buildVersion.sdkVersion,
+          ],
+        ),
+      )
+      .toList();
 }
 
 const _evidenceTokens = [

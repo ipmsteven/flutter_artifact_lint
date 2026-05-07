@@ -122,6 +122,15 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports whether the scanner saw an app or archive artifact.',
     fix: 'No action required.',
   ),
+  'ios.macho.build_version': RuleDefinition(
+    ruleId: 'ios.macho.build_version',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O build version',
+    description:
+        'Reports platform, minimum OS, and SDK metadata from LC_BUILD_VERSION.',
+    fix: 'No action required.',
+  ),
   'ios.permission.camera.empty': RuleDefinition(
     ruleId: 'ios.permission.camera.empty',
     defaultLevel: FindingLevel.failed,

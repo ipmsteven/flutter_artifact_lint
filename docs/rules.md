@@ -90,6 +90,8 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 
 `ios.artifact.type` reports the scanned artifact type.
 
+`ios.macho.build_version` reports platform, minimum OS, and SDK metadata from `LC_BUILD_VERSION`.
+
 `ios.signing.unavailable` reports that signing state is unavailable for an unsigned artifact.
 
 `ios.signing.present` reports that signing data appears to be present.
@@ -106,9 +108,8 @@ parser currently reads `LC_LOAD_DYLIB`, `LC_LOAD_WEAK_DYLIB`,
 the scanner report system framework evidence even when the framework name
 appears only in load-command metadata.
 
-Mach-O build metadata is not parsed yet. A future parser can read
-`LC_BUILD_VERSION` to report deployment target, SDK, platform, and architecture
-details that do not exist as normal strings.
+Mach-O build metadata is parsed from `LC_BUILD_VERSION` to report platform,
+minimum OS, and SDK version. Architecture inventory is not reported yet.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or

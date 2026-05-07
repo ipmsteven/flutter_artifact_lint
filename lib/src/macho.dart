@@ -1,9 +1,13 @@
 import 'dart:convert';
 
 class MachOReport {
-  const MachOReport({required this.linkedDylibs});
+  const MachOReport({
+    required this.linkedDylibs,
+    this.buildVersions = const [],
+  });
 
   final List<MachODylib> linkedDylibs;
+  final List<MachOBuildVersion> buildVersions;
 }
 
 class MachODylib {
@@ -13,6 +17,34 @@ class MachODylib {
   final bool weak;
 }
 
+class MachOBuildVersion {
+  const MachOBuildVersion({
+    required this.platform,
+    required this.minimumOsVersion,
+    required this.sdkVersion,
+  });
+
+  final int platform;
+  final String minimumOsVersion;
+  final String sdkVersion;
+
+  String get platformName => switch (platform) {
+    1 => 'macOS',
+    2 => 'iOS',
+    3 => 'tvOS',
+    4 => 'watchOS',
+    5 => 'bridgeOS',
+    6 => 'Mac Catalyst',
+    7 => 'iOS Simulator',
+    8 => 'tvOS Simulator',
+    9 => 'watchOS Simulator',
+    10 => 'DriverKit',
+    11 => 'visionOS',
+    12 => 'visionOS Simulator',
+    _ => 'platform $platform',
+  };
+}
+
 class MachOParser {
   const MachOParser();
 
@@ -20,7 +52,11 @@ class MachOParser {
     final fatReport = _parseFat(bytes);
     if (fatReport != null) return fatReport;
 
-    return _deduplicatedReport(_parseThin(bytes).linkedDylibs);
+    final thinReport = _parseThin(bytes);
+    return _deduplicatedReport(
+      thinReport.linkedDylibs,
+      thinReport.buildVersions,
+    );
   }
 
   MachOReport? _parseFat(List<int> bytes) {
@@ -40,6 +76,7 @@ class MachOParser {
     final archSize = fat64 ? 32 : 20;
     var offset = 8;
     final linkedDylibs = <MachODylib>[];
+    final buildVersions = <MachOBuildVersion>[];
 
     for (var i = 0; i < architectureCount; i += 1) {
       if (offset + archSize > bytes.length) break;
@@ -53,17 +90,17 @@ class MachOParser {
       if (sliceOffset > 0 &&
           sliceSize > 0 &&
           sliceOffset + sliceSize <= bytes.length) {
-        linkedDylibs.addAll(
-          _parseThin(
-            bytes.sublist(sliceOffset, sliceOffset + sliceSize),
-          ).linkedDylibs,
+        final sliceReport = _parseThin(
+          bytes.sublist(sliceOffset, sliceOffset + sliceSize),
         );
+        linkedDylibs.addAll(sliceReport.linkedDylibs);
+        buildVersions.addAll(sliceReport.buildVersions);
       }
 
       offset += archSize;
     }
 
-    return _deduplicatedReport(linkedDylibs);
+    return _deduplicatedReport(linkedDylibs, buildVersions);
   }
 
   MachOReport _parseThin(List<int> bytes) {
@@ -73,6 +110,7 @@ class MachOParser {
     }
 
     final linkedDylibs = <MachODylib>[];
+    final buildVersions = <MachOBuildVersion>[];
     var offset = header.loadCommandsOffset;
 
     for (var i = 0; i < header.commandCount; i += 1) {
@@ -101,14 +139,30 @@ class MachOParser {
         }
       }
 
+      if (command == _lcBuildVersion && commandSize >= 24) {
+        buildVersions.add(
+          MachOBuildVersion(
+            platform: _readU32(bytes, offset + 8),
+            minimumOsVersion: _versionString(_readU32(bytes, offset + 12)),
+            sdkVersion: _versionString(_readU32(bytes, offset + 16)),
+          ),
+        );
+      }
+
       offset += commandSize;
     }
 
-    return MachOReport(linkedDylibs: linkedDylibs);
+    return MachOReport(
+      linkedDylibs: linkedDylibs,
+      buildVersions: buildVersions,
+    );
   }
 }
 
-MachOReport _deduplicatedReport(List<MachODylib> dylibs) {
+MachOReport _deduplicatedReport(
+  List<MachODylib> dylibs, [
+  List<MachOBuildVersion> buildVersions = const [],
+]) {
   final byPath = <String, MachODylib>{};
   for (final dylib in dylibs) {
     final existing = byPath[dylib.path];
@@ -116,7 +170,17 @@ MachOReport _deduplicatedReport(List<MachODylib> dylibs) {
         ? dylib
         : MachODylib(path: dylib.path, weak: existing.weak && dylib.weak);
   }
-  return MachOReport(linkedDylibs: byPath.values.toList());
+
+  final byBuildVersion = <String, MachOBuildVersion>{};
+  for (final buildVersion in buildVersions) {
+    byBuildVersion['${buildVersion.platform}|${buildVersion.minimumOsVersion}|${buildVersion.sdkVersion}'] =
+        buildVersion;
+  }
+
+  return MachOReport(
+    linkedDylibs: byPath.values.toList(),
+    buildVersions: byBuildVersion.values.toList(),
+  );
 }
 
 class _MachOHeader {
@@ -204,6 +268,13 @@ int _boundedEnd(int start, int length, int fileLength) {
   return end > fileLength ? fileLength : end;
 }
 
+String _versionString(int version) {
+  final major = (version >> 16) & 0xffff;
+  final minor = (version >> 8) & 0xff;
+  final patch = version & 0xff;
+  return '$major.$minor.$patch';
+}
+
 const _fatMagic = 0xcafebabe;
 const _fatMagic64 = 0xcafebabf;
 const _mhMagic = 0xfeedface;
@@ -213,3 +284,4 @@ const _lcLoadWeakDylib = 0x80000018;
 const _lcReexportDylib = 0x8000001f;
 const _lcLazyLoadDylib = 0x20;
 const _lcLoadUpwardDylib = 0x80000023;
+const _lcBuildVersion = 0x32;

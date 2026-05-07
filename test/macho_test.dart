@@ -108,6 +108,38 @@ void main() {
       );
     });
 
+    test('reads LC_BUILD_VERSION metadata', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoBuildVersionCommand(
+            platform: 2,
+            minimumOsVersion: 0x000c0000,
+            sdkVersion: 0x00110000,
+          ),
+        ]),
+      );
+
+      expect(report.buildVersions, hasLength(1));
+      expect(report.buildVersions.single.platformName, 'iOS');
+      expect(report.buildVersions.single.minimumOsVersion, '12.0.0');
+      expect(report.buildVersions.single.sdkVersion, '17.0.0');
+    });
+
+    test('deduplicates LC_BUILD_VERSION metadata across fat Mach-O slices', () {
+      final slice = thinMachO([
+        machoBuildVersionCommand(
+          platform: 2,
+          minimumOsVersion: 0x000d0100,
+          sdkVersion: 0x00120000,
+        ),
+      ]);
+      final report = const MachOParser().parse(fatMachO([slice, slice]));
+
+      expect(report.buildVersions, hasLength(1));
+      expect(report.buildVersions.single.minimumOsVersion, '13.1.0');
+      expect(report.buildVersions.single.sdkVersion, '18.0.0');
+    });
+
     test('ignores non-Mach-O bytes', () {
       final report = const MachOParser().parse(latin1.encode('not a binary'));
 
@@ -170,6 +202,21 @@ List<int> machOLoadDylibCommand(
     ...u32(0x00010000), // current version 1.0.0
     ...u32(0x00010000), // compatibility version 1.0.0
     ...pathBytes,
+  ];
+}
+
+List<int> machoBuildVersionCommand({
+  required int platform,
+  required int minimumOsVersion,
+  required int sdkVersion,
+}) {
+  return [
+    ...u32(0x32), // LC_BUILD_VERSION
+    ...u32(24),
+    ...u32(platform),
+    ...u32(minimumOsVersion),
+    ...u32(sdkVersion),
+    ...u32(0), // ntools
   ];
 }
 
