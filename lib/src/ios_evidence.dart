@@ -189,6 +189,18 @@ class IosEvidenceExtractor {
         );
       }
 
+      for (final sectionString in machoReport.sectionStrings) {
+        for (final token in _matchedTokens(sectionString.value, tokens)) {
+          addEvidence(token, '${entity.path}#${sectionString.sectionName}');
+        }
+      }
+
+      for (final symbol in machoReport.symbols) {
+        for (final token in _matchedTokens(symbol.name, tokens)) {
+          addEvidence(token, '${entity.path}#LC_SYMTAB');
+        }
+      }
+
       for (final token in _scanTextTokens(
         entity,
         tokens,
@@ -219,6 +231,12 @@ class IosEvidenceExtractor {
       '.car',
       '.storyboardc',
     }.contains(ext);
+  }
+}
+
+Iterable<String> _matchedTokens(String value, List<String> tokens) sync* {
+  for (final token in tokens) {
+    if (value.contains(token)) yield token;
   }
 }
 

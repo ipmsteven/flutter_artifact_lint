@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_artifact_lint/src/ios_evidence.dart';
@@ -50,6 +51,56 @@ void main() {
     expect(report.buildVersions, hasLength(1));
     expect(report.buildVersions.single.buildVersion.minimumOsVersion, '12.0.0');
   });
+
+  test('reports parsed Mach-O section sources for token evidence', () async {
+    final root = await Directory.systemTemp.createTemp('fal_evidence_');
+    addTearDown(() => root.deleteSync(recursive: true));
+
+    final appPath = '${root.path}/Runner.app';
+    final binary = File('$appPath/Runner')..createSync(recursive: true);
+    binary.writeAsBytesSync(
+      thinMachOWithCStringSection(
+        sectionName: '__objc_methname',
+        values: ['requestWhenInUseAuthorization'],
+      ),
+    );
+
+    final report = const IosEvidenceExtractor(
+      tokens: ['requestWhenInUseAuthorization'],
+    ).collect(appPath);
+
+    expect(
+      report.sourcesFor([
+        'requestWhenInUseAuthorization',
+      ])['requestWhenInUseAuthorization'],
+      contains('${binary.path}#__TEXT.__objc_methname'),
+    );
+  });
+
+  test(
+    'reports parsed Mach-O symbol table sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithSymbolTable(['_UIApplicationOpenSettingsURLString']),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['_UIApplicationOpenSettingsURLString'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor([
+          '_UIApplicationOpenSettingsURLString',
+        ])['_UIApplicationOpenSettingsURLString'],
+        contains('${binary.path}#LC_SYMTAB'),
+      );
+    },
+  );
 }
 
 List<int> thinMachO(List<List<int>> commands) {
@@ -74,6 +125,116 @@ List<int> machoBuildVersionCommand() {
     ...u32(0x000c0000),
     ...u32(0x00110000),
     ...u32(0),
+  ];
+}
+
+List<int> thinMachOWithCStringSection({
+  required String sectionName,
+  required List<String> values,
+}) {
+  final sectionData = cStringBytes(values);
+  final commandSize = 72 + 80;
+  final sectionOffset = 32 + commandSize;
+  final command = machoSegment64Command('__TEXT', [
+    (
+      name: sectionName,
+      segmentName: '__TEXT',
+      fileOffset: sectionOffset,
+      size: sectionData.length,
+    ),
+  ]);
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(1),
+    ...u32(command.length),
+    ...u32(0),
+    ...u32(0),
+    ...command,
+    ...sectionData,
+  ];
+}
+
+List<int> thinMachOWithSymbolTable(List<String> symbols) {
+  final stringTable = [
+    0,
+    for (final symbol in symbols) ...[...latin1.encode(symbol), 0],
+  ];
+  final symbolEntries = <int>[];
+  var stringIndex = 1;
+  for (final symbol in symbols) {
+    symbolEntries.addAll([
+      ...u32(stringIndex),
+      0x0f,
+      0x01,
+      ...u16(0),
+      ...u64(0),
+    ]);
+    stringIndex += latin1.encode(symbol).length + 1;
+  }
+
+  const commandSize = 24;
+  const symbolOffset = 32 + commandSize;
+  final stringOffset = symbolOffset + symbolEntries.length;
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(1),
+    ...u32(commandSize),
+    ...u32(0),
+    ...u32(0),
+    ...u32(0x02),
+    ...u32(commandSize),
+    ...u32(symbolOffset),
+    ...u32(symbols.length),
+    ...u32(stringOffset),
+    ...u32(stringTable.length),
+    ...symbolEntries,
+    ...stringTable,
+  ];
+}
+
+List<int> machoSegment64Command(
+  String segmentName,
+  List<({String name, String segmentName, int fileOffset, int size})> sections,
+) {
+  return [
+    ...u32(0x19),
+    ...u32(72 + sections.length * 80),
+    ...fixedString(segmentName, 16),
+    ...u64(0),
+    ...u64(0),
+    ...u64(0),
+    ...u64(0),
+    ...u32(0),
+    ...u32(0),
+    ...u32(sections.length),
+    ...u32(0),
+    for (final section in sections) ...[
+      ...fixedString(section.name, 16),
+      ...fixedString(section.segmentName, 16),
+      ...u64(0),
+      ...u64(section.size),
+      ...u32(section.fileOffset),
+      ...u32(0),
+      ...u32(0),
+      ...u32(0),
+      ...u32(0),
+      ...u32(0),
+      ...u32(0),
+      ...u32(0),
+    ],
+  ];
+}
+
+List<int> cStringBytes(List<String> values) {
+  return [
+    for (final value in values) ...[...latin1.encode(value), 0],
   ];
 }
 
@@ -119,11 +280,36 @@ List<int> u32(int value) {
   ];
 }
 
+List<int> u16(int value) {
+  return [value & 0xff, (value >> 8) & 0xff];
+}
+
 List<int> u32be(int value) {
   return [
     (value >> 24) & 0xff,
     (value >> 16) & 0xff,
     (value >> 8) & 0xff,
     value & 0xff,
+  ];
+}
+
+List<int> u64(int value) {
+  return [
+    value & 0xff,
+    (value >> 8) & 0xff,
+    (value >> 16) & 0xff,
+    (value >> 24) & 0xff,
+    (value >> 32) & 0xff,
+    (value >> 40) & 0xff,
+    (value >> 48) & 0xff,
+    (value >> 56) & 0xff,
+  ];
+}
+
+List<int> fixedString(String value, int length) {
+  final bytes = latin1.encode(value);
+  return [
+    ...bytes.take(length),
+    ...List.filled(length - (bytes.length > length ? length : bytes.length), 0),
   ];
 }
