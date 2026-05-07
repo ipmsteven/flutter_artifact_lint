@@ -16,6 +16,8 @@ class MachOReport {
     this.symbols = const [],
     this.sectionStrings = const [],
     this.dynamicSymbolTables = const [],
+    this.dyldInfos = const [],
+    this.dyldBindSymbols = const [],
     this.objcSelectors = const [],
     this.objcClasses = const [],
     this.objcMethods = const [],
@@ -34,6 +36,8 @@ class MachOReport {
   final List<MachOSymbol> symbols;
   final List<MachOSectionString> sectionStrings;
   final List<MachODynamicSymbolTable> dynamicSymbolTables;
+  final List<MachODyldInfo> dyldInfos;
+  final List<MachODyldBindSymbol> dyldBindSymbols;
   final List<MachOObjCSelector> objcSelectors;
   final List<MachOObjCClass> objcClasses;
   final List<MachOObjCMethod> objcMethods;
@@ -230,6 +234,31 @@ class MachODynamicSymbolTable {
   final int indirectSymbolCount;
 }
 
+class MachODyldInfo {
+  const MachODyldInfo({
+    required this.bindOffset,
+    required this.bindSize,
+    required this.weakBindOffset,
+    required this.weakBindSize,
+    required this.lazyBindOffset,
+    required this.lazyBindSize,
+  });
+
+  final int bindOffset;
+  final int bindSize;
+  final int weakBindOffset;
+  final int weakBindSize;
+  final int lazyBindOffset;
+  final int lazyBindSize;
+}
+
+class MachODyldBindSymbol {
+  const MachODyldBindSymbol({required this.name, required this.source});
+
+  final String name;
+  final String source;
+}
+
 class MachOSymbol {
   const MachOSymbol({
     required this.name,
@@ -281,6 +310,8 @@ class MachOParser {
       thinReport.symbols,
       thinReport.sectionStrings,
       thinReport.dynamicSymbolTables,
+      thinReport.dyldInfos,
+      thinReport.dyldBindSymbols,
       thinReport.objcSelectors,
       thinReport.objcClasses,
       thinReport.objcMethods,
@@ -327,6 +358,8 @@ class MachOParser {
     final symbols = <MachOSymbol>[];
     final sectionStrings = <MachOSectionString>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
+    final dyldInfos = <MachODyldInfo>[];
+    final dyldBindSymbols = <MachODyldBindSymbol>[];
     final objcSelectors = <MachOObjCSelector>[];
     final objcClasses = <MachOObjCClass>[];
     final objcMethods = <MachOObjCMethod>[];
@@ -362,6 +395,8 @@ class MachOParser {
       symbols.addAll(sliceReport.symbols);
       sectionStrings.addAll(sliceReport.sectionStrings);
       dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
+      dyldInfos.addAll(sliceReport.dyldInfos);
+      dyldBindSymbols.addAll(sliceReport.dyldBindSymbols);
       objcSelectors.addAll(sliceReport.objcSelectors);
       objcClasses.addAll(sliceReport.objcClasses);
       objcMethods.addAll(sliceReport.objcMethods);
@@ -381,6 +416,8 @@ class MachOParser {
       symbols,
       sectionStrings,
       dynamicSymbolTables,
+      dyldInfos,
+      dyldBindSymbols,
       objcSelectors,
       objcClasses,
       objcMethods,
@@ -434,6 +471,12 @@ class MachOParser {
       is64Bit: thinIs64Bit,
       symbolTables: report.symbolTables,
     );
+    final dyldBindSymbols = _readDyldBindSymbolsFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      dyldInfos: report.dyldInfos,
+    );
     final sectionStrings = _readSectionStringsFromFile(
       raf,
       fileOffset,
@@ -462,6 +505,7 @@ class MachOParser {
       segments: report.segments,
     );
     if (symbols.isEmpty &&
+        dyldBindSymbols.isEmpty &&
         sectionStrings.isEmpty &&
         objcSelectors.isEmpty &&
         objcClasses.isEmpty &&
@@ -483,6 +527,8 @@ class MachOParser {
       [...report.symbols, ...symbols],
       [...report.sectionStrings, ...sectionStrings],
       report.dynamicSymbolTables,
+      report.dyldInfos,
+      [...report.dyldBindSymbols, ...dyldBindSymbols],
       [...report.objcSelectors, ...objcSelectors],
       [...report.objcClasses, ...objcClasses],
       [...report.objcMethods, ...objcMethods],
@@ -518,6 +564,8 @@ class MachOParser {
     final symbols = <MachOSymbol>[];
     final sectionStrings = <MachOSectionString>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
+    final dyldInfos = <MachODyldInfo>[];
+    final dyldBindSymbols = <MachODyldBindSymbol>[];
     final objcSelectors = <MachOObjCSelector>[];
     final objcClasses = <MachOObjCClass>[];
     final objcMethods = <MachOObjCMethod>[];
@@ -550,6 +598,8 @@ class MachOParser {
         symbols.addAll(sliceReport.symbols);
         sectionStrings.addAll(sliceReport.sectionStrings);
         dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
+        dyldInfos.addAll(sliceReport.dyldInfos);
+        dyldBindSymbols.addAll(sliceReport.dyldBindSymbols);
         objcSelectors.addAll(sliceReport.objcSelectors);
         objcClasses.addAll(sliceReport.objcClasses);
         objcMethods.addAll(sliceReport.objcMethods);
@@ -572,6 +622,8 @@ class MachOParser {
       symbols,
       sectionStrings,
       dynamicSymbolTables,
+      dyldInfos,
+      dyldBindSymbols,
       objcSelectors,
       objcClasses,
       objcMethods,
@@ -597,6 +649,7 @@ class MachOParser {
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
+    final dyldInfos = <MachODyldInfo>[];
     var offset = header.loadCommandsOffset;
 
     for (var i = 0; i < header.commandCount; i += 1) {
@@ -687,6 +740,19 @@ class MachOParser {
         );
       }
 
+      if (_isDyldInfoCommand(command) && commandSize >= 48) {
+        dyldInfos.add(
+          MachODyldInfo(
+            bindOffset: _readU32(bytes, offset + 16),
+            bindSize: _readU32(bytes, offset + 20),
+            weakBindOffset: _readU32(bytes, offset + 24),
+            weakBindSize: _readU32(bytes, offset + 28),
+            lazyBindOffset: _readU32(bytes, offset + 32),
+            lazyBindSize: _readU32(bytes, offset + 36),
+          ),
+        );
+      }
+
       if (command == _lcUuid && commandSize >= 24) {
         uuids.add(MachOUuid(value: _uuidString(bytes, offset + 8)));
       }
@@ -737,6 +803,10 @@ class MachOParser {
       is64Bit: header.is64Bit,
       symbolTables: symbolTables,
     );
+    final dyldBindSymbols = _readDyldBindSymbolsFromBytes(
+      bytes,
+      dyldInfos: dyldInfos,
+    );
     final sectionStrings = _readSectionStringsFromBytes(
       bytes,
       segments: segments,
@@ -771,6 +841,8 @@ class MachOParser {
       symbols: symbols,
       sectionStrings: sectionStrings,
       dynamicSymbolTables: dynamicSymbolTables,
+      dyldInfos: dyldInfos,
+      dyldBindSymbols: dyldBindSymbols,
       objcSelectors: objcSelectors,
       objcClasses: objcClasses,
       objcMethods: objcMethods,
@@ -792,6 +864,8 @@ MachOReport _deduplicatedReport(
   List<MachOSymbol> symbols = const [],
   List<MachOSectionString> sectionStrings = const [],
   List<MachODynamicSymbolTable> dynamicSymbolTables = const [],
+  List<MachODyldInfo> dyldInfos = const [],
+  List<MachODyldBindSymbol> dyldBindSymbols = const [],
   List<MachOObjCSelector> objcSelectors = const [],
   List<MachOObjCClass> objcClasses = const [],
   List<MachOObjCMethod> objcMethods = const [],
@@ -877,6 +951,18 @@ MachOReport _deduplicatedReport(
         dynamicSymbolTable;
   }
 
+  final byDyldInfo = <String, MachODyldInfo>{};
+  for (final dyldInfo in dyldInfos) {
+    byDyldInfo['${dyldInfo.bindOffset}|${dyldInfo.bindSize}|${dyldInfo.weakBindOffset}|${dyldInfo.weakBindSize}|${dyldInfo.lazyBindOffset}|${dyldInfo.lazyBindSize}'] =
+        dyldInfo;
+  }
+
+  final byDyldBindSymbol = <String, MachODyldBindSymbol>{};
+  for (final dyldBindSymbol in dyldBindSymbols) {
+    byDyldBindSymbol['${dyldBindSymbol.source}|${dyldBindSymbol.name}'] =
+        dyldBindSymbol;
+  }
+
   final byObjCSelector = <String, MachOObjCSelector>{};
   for (final objcSelector in objcSelectors) {
     byObjCSelector['${objcSelector.sourceSection}|${objcSelector.name}|${objcSelector.targetAddress}'] =
@@ -912,6 +998,8 @@ MachOReport _deduplicatedReport(
     symbols: bySymbol.values.toList(),
     sectionStrings: bySectionString.values.toList(),
     dynamicSymbolTables: byDynamicSymbolTable.values.toList(),
+    dyldInfos: byDyldInfo.values.toList(),
+    dyldBindSymbols: byDyldBindSymbol.values.toList(),
     objcSelectors: byObjCSelector.values.toList(),
     objcClasses: byObjCClass.values.toList(),
     objcMethods: byObjCMethod.values.toList(),
@@ -1012,6 +1100,10 @@ bool _isDylibLoadCommand(int command) {
     _lcLazyLoadDylib,
     _lcLoadUpwardDylib,
   }.contains(command);
+}
+
+bool _isDyldInfoCommand(int command) {
+  return command == _lcDyldInfo || command == _lcDyldInfoOnly;
 }
 
 int? _legacyVersionPlatform(int command) {
@@ -2567,6 +2659,172 @@ bool _canReadRelativeObjCMethodListList(int entrySize, int entryCount) {
   return byteLength > 0 && byteLength <= _maxObjCMethodListBytes;
 }
 
+List<MachODyldBindSymbol> _readDyldBindSymbolsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required List<MachODyldInfo> dyldInfos,
+}) {
+  final symbols = <MachODyldBindSymbol>[];
+  for (final dyldInfo in dyldInfos) {
+    symbols.addAll(
+      _readDyldBindSymbolStreamFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        dyldInfo.bindOffset,
+        dyldInfo.bindSize,
+        source: 'LC_DYLD_INFO.bind',
+      ),
+    );
+    symbols.addAll(
+      _readDyldBindSymbolStreamFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        dyldInfo.weakBindOffset,
+        dyldInfo.weakBindSize,
+        source: 'LC_DYLD_INFO.weak_bind',
+      ),
+    );
+    symbols.addAll(
+      _readDyldBindSymbolStreamFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        dyldInfo.lazyBindOffset,
+        dyldInfo.lazyBindSize,
+        source: 'LC_DYLD_INFO.lazy_bind',
+      ),
+    );
+  }
+  return symbols;
+}
+
+List<MachODyldBindSymbol> _readDyldBindSymbolsFromBytes(
+  List<int> bytes, {
+  required List<MachODyldInfo> dyldInfos,
+}) {
+  final symbols = <MachODyldBindSymbol>[];
+  for (final dyldInfo in dyldInfos) {
+    symbols.addAll(
+      _readDyldBindSymbolStreamFromBytes(
+        bytes,
+        dyldInfo.bindOffset,
+        dyldInfo.bindSize,
+        source: 'LC_DYLD_INFO.bind',
+      ),
+    );
+    symbols.addAll(
+      _readDyldBindSymbolStreamFromBytes(
+        bytes,
+        dyldInfo.weakBindOffset,
+        dyldInfo.weakBindSize,
+        source: 'LC_DYLD_INFO.weak_bind',
+      ),
+    );
+    symbols.addAll(
+      _readDyldBindSymbolStreamFromBytes(
+        bytes,
+        dyldInfo.lazyBindOffset,
+        dyldInfo.lazyBindSize,
+        source: 'LC_DYLD_INFO.lazy_bind',
+      ),
+    );
+  }
+  return symbols;
+}
+
+List<MachODyldBindSymbol> _readDyldBindSymbolStreamFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength,
+  int streamOffset,
+  int streamSize, {
+  required String source,
+}) {
+  if (!_canReadDyldInfoStream(streamOffset, streamSize, availableLength)) {
+    return const [];
+  }
+
+  return _parseDyldBindSymbols(
+    _readRange(raf, fileOffset + streamOffset, streamSize),
+    source: source,
+  );
+}
+
+List<MachODyldBindSymbol> _readDyldBindSymbolStreamFromBytes(
+  List<int> bytes,
+  int streamOffset,
+  int streamSize, {
+  required String source,
+}) {
+  if (!_canReadDyldInfoStream(streamOffset, streamSize, bytes.length)) {
+    return const [];
+  }
+
+  return _parseDyldBindSymbols(
+    bytes.sublist(streamOffset, streamOffset + streamSize),
+    source: source,
+  );
+}
+
+bool _canReadDyldInfoStream(
+  int streamOffset,
+  int streamSize,
+  int availableLength,
+) {
+  return streamOffset > 0 &&
+      streamSize > 0 &&
+      streamSize <= _maxDyldInfoBytes &&
+      _rangeWithin(streamOffset, streamSize, availableLength);
+}
+
+List<MachODyldBindSymbol> _parseDyldBindSymbols(
+  List<int> bytes, {
+  required String source,
+}) {
+  final symbols = <MachODyldBindSymbol>[];
+  var offset = 0;
+  while (offset < bytes.length) {
+    final byte = bytes[offset];
+    offset += 1;
+    final opcode = byte & _bindOpcodeMask;
+
+    if (opcode == _bindOpcodeSetSymbolTrailingFlagsImm) {
+      final stringStart = offset;
+      while (offset < bytes.length && bytes[offset] != 0) {
+        offset += 1;
+      }
+      if (offset >= bytes.length) break;
+
+      final name = latin1.decode(
+        bytes.sublist(stringStart, offset),
+        allowInvalid: true,
+      );
+      if (name.isNotEmpty) {
+        symbols.add(MachODyldBindSymbol(name: name, source: source));
+      }
+      offset += 1;
+      continue;
+    }
+
+    switch (opcode) {
+      case _bindOpcodeSetDylibOrdinalUleb:
+      case _bindOpcodeSetSegmentAndOffsetUleb:
+      case _bindOpcodeAddAddrUleb:
+      case _bindOpcodeDoBindAddAddrUleb:
+        offset = _skipUleb128(bytes, offset);
+      case _bindOpcodeSetAddendSleb:
+        offset = _skipSleb128(bytes, offset);
+      case _bindOpcodeDoBindUlebTimesSkippingUleb:
+        offset = _skipUleb128(bytes, offset);
+        offset = _skipUleb128(bytes, offset);
+    }
+  }
+  return symbols;
+}
+
 List<MachOSymbol> _readSymbolsFromFile(
   RandomAccessFile raf,
   int fileOffset,
@@ -2749,6 +3007,19 @@ int _signExtend(int value, int width) {
   return (truncated & signBit) == 0 ? truncated : truncated - (1 << width);
 }
 
+int _skipUleb128(List<int> bytes, int offset) {
+  while (offset < bytes.length) {
+    final byte = bytes[offset];
+    offset += 1;
+    if ((byte & 0x80) == 0) break;
+  }
+  return offset;
+}
+
+int _skipSleb128(List<int> bytes, int offset) {
+  return _skipUleb128(bytes, offset);
+}
+
 int _readU64(List<int> bytes, int offset) {
   if (offset + 8 > bytes.length) return 0;
   return bytes[offset] |
@@ -2814,7 +3085,16 @@ String _sourceVersionString(int version) {
 
 const _fatMagic = 0xcafebabe;
 const _fatMagic64 = 0xcafebabf;
+const _bindOpcodeMask = 0xf0;
+const _bindOpcodeSetDylibOrdinalUleb = 0x20;
+const _bindOpcodeSetSymbolTrailingFlagsImm = 0x40;
+const _bindOpcodeSetAddendSleb = 0x60;
+const _bindOpcodeSetSegmentAndOffsetUleb = 0x70;
+const _bindOpcodeAddAddrUleb = 0x80;
+const _bindOpcodeDoBindAddAddrUleb = 0xa0;
+const _bindOpcodeDoBindUlebTimesSkippingUleb = 0xc0;
 const _maxFatArchTableBytes = 64 * 1024;
+const _maxDyldInfoBytes = 16 * 1024 * 1024;
 const _maxLoadCommandBytes = 8 * 1024 * 1024;
 const _objcDirectSelectorMethodListFlag = 0x40000000;
 const _objcRelativeMethodListsFlag = 0x1;
@@ -2838,6 +3118,8 @@ const _lcRpath = 0x8000001c;
 const _lcCodeSignature = 0x1d;
 const _lcReexportDylib = 0x8000001f;
 const _lcLazyLoadDylib = 0x20;
+const _lcDyldInfo = 0x22;
+const _lcDyldInfoOnly = 0x80000022;
 const _lcLoadUpwardDylib = 0x80000023;
 const _lcSourceVersion = 0x2a;
 const _lcBuildVersion = 0x32;

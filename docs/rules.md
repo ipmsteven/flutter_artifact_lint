@@ -140,6 +140,8 @@ Symbol table metadata and symbol names are parsed from `LC_SYMTAB` when the
 symbol and string tables are present in the artifact.
 Dynamic symbol table ranges and indirect-symbol table metadata are parsed from
 `LC_DYSYMTAB`.
+Imported symbol names are parsed from `LC_DYLD_INFO` and `LC_DYLD_INFO_ONLY`
+bind, weak-bind, and lazy-bind opcode streams.
 C-string values are parsed from `__cstring`, `__objc_methname`,
 `__objc_classname`, and `__objc_methtype` sections.
 Objective-C selector references are resolved from `__objc_selrefs` pointers

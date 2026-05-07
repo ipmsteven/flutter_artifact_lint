@@ -201,6 +201,12 @@ class IosEvidenceExtractor {
         }
       }
 
+      for (final symbol in machoReport.dyldBindSymbols) {
+        for (final token in _matchedTokens(symbol.name, tokens)) {
+          addEvidence(token, '${entity.path}#${symbol.source}');
+        }
+      }
+
       for (final selector in machoReport.objcSelectors) {
         for (final token in _matchedTokens(selector.name, tokens)) {
           addEvidence(token, '${entity.path}#${selector.sourceSection}');

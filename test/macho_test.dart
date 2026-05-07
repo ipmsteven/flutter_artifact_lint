@@ -311,6 +311,45 @@ void main() {
       expect(table.indirectSymbolCount, 16);
     });
 
+    test('reads LC_DYLD_INFO bind symbols from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithDyldBindSymbols([
+          r'_OBJC_CLASS_$_CLLocationManager',
+          '_UIApplicationOpenSettingsURLString',
+        ]),
+      );
+
+      expect(
+        report.dyldBindSymbols.map((symbol) => symbol.name),
+        containsAll([
+          r'_OBJC_CLASS_$_CLLocationManager',
+          '_UIApplicationOpenSettingsURLString',
+        ]),
+      );
+    });
+
+    test(
+      'reads LC_DYLD_INFO bind symbols from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithDyldBindSymbols([
+              r'_OBJC_CLASS_$_UNUserNotificationCenter',
+            ], paddingBeforeBindInfo: 4096),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(
+          report.dyldBindSymbols.single.name,
+          r'_OBJC_CLASS_$_UNUserNotificationCenter',
+        );
+      },
+    );
+
     test('reads C strings from Objective-C method sections', () {
       final report = const MachOParser().parse(
         thinMachOWithCStringSection(
@@ -695,6 +734,26 @@ List<int> thinMachOWithSymbolTable(
     ...List.filled(paddingBeforeSymbolTable, 0),
     ...symbolEntries,
     ...stringTable,
+  ];
+}
+
+List<int> thinMachOWithDyldBindSymbols(
+  List<String> symbols, {
+  int paddingBeforeBindInfo = 0,
+}) {
+  final bindInfo = dyldBindInfoBytes(symbols);
+  const commandsSize = 48;
+  final bindOffset = 32 + commandsSize + paddingBeforeBindInfo;
+  final command = machoDyldInfoCommand(
+    bindOffset: bindOffset,
+    bindSize: bindInfo.length,
+  );
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
+    ...List.filled(paddingBeforeBindInfo, 0),
+    ...bindInfo,
   ];
 }
 
@@ -1270,6 +1329,37 @@ List<int> machoDynamicSymtabCommand({
     ...u32(0), // nextrel
     ...u32(0), // locreloff
     ...u32(0), // nlocrel
+  ];
+}
+
+List<int> machoDyldInfoCommand({
+  required int bindOffset,
+  required int bindSize,
+  int weakBindOffset = 0,
+  int weakBindSize = 0,
+  int lazyBindOffset = 0,
+  int lazyBindSize = 0,
+}) {
+  return [
+    ...u32(0x80000022),
+    ...u32(48),
+    ...u32(0),
+    ...u32(0),
+    ...u32(bindOffset),
+    ...u32(bindSize),
+    ...u32(weakBindOffset),
+    ...u32(weakBindSize),
+    ...u32(lazyBindOffset),
+    ...u32(lazyBindSize),
+    ...u32(0),
+    ...u32(0),
+  ];
+}
+
+List<int> dyldBindInfoBytes(List<String> symbols) {
+  return [
+    for (final symbol in symbols) ...[0x40, ...latin1.encode(symbol), 0, 0x90],
+    0,
   ];
 }
 

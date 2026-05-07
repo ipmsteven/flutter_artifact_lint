@@ -102,6 +102,26 @@ void main() {
     },
   );
 
+  test('reports parsed dyld bind symbol sources for token evidence', () async {
+    final root = await Directory.systemTemp.createTemp('fal_evidence_');
+    addTearDown(() => root.deleteSync(recursive: true));
+
+    final appPath = '${root.path}/Runner.app';
+    final binary = File('$appPath/Runner')..createSync(recursive: true);
+    binary.writeAsBytesSync(
+      thinMachOWithDyldBindSymbols([r'_OBJC_CLASS_$_CLLocationManager']),
+    );
+
+    final report = const IosEvidenceExtractor(
+      tokens: ['CLLocationManager'],
+    ).collect(appPath);
+
+    expect(
+      report.sourcesFor(['CLLocationManager'])['CLLocationManager'],
+      contains('${binary.path}#LC_DYLD_INFO.bind'),
+    );
+  });
+
   test(
     'reports parsed Objective-C selector reference sources for token evidence',
     () async {
@@ -270,6 +290,29 @@ List<int> thinMachOWithSymbolTable(List<String> symbols) {
     ...u32(stringTable.length),
     ...symbolEntries,
     ...stringTable,
+  ];
+}
+
+List<int> thinMachOWithDyldBindSymbols(List<String> symbols) {
+  final bindInfo = dyldBindInfoBytes(symbols);
+  const commandsSize = 48;
+  final bindOffset = 32 + commandsSize;
+  final command = machoDyldInfoCommand(
+    bindOffset: bindOffset,
+    bindSize: bindInfo.length,
+  );
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(1),
+    ...u32(command.length),
+    ...u32(0),
+    ...u32(0),
+    ...command,
+    ...bindInfo,
   ];
 }
 
@@ -548,6 +591,33 @@ List<int> machoSegment64AddressCommand(
       ...u32(0),
       ...u32(0),
     ],
+  ];
+}
+
+List<int> machoDyldInfoCommand({
+  required int bindOffset,
+  required int bindSize,
+}) {
+  return [
+    ...u32(0x80000022),
+    ...u32(48),
+    ...u32(0),
+    ...u32(0),
+    ...u32(bindOffset),
+    ...u32(bindSize),
+    ...u32(0),
+    ...u32(0),
+    ...u32(0),
+    ...u32(0),
+    ...u32(0),
+    ...u32(0),
+  ];
+}
+
+List<int> dyldBindInfoBytes(List<String> symbols) {
+  return [
+    for (final symbol in symbols) ...[0x40, ...latin1.encode(symbol), 0, 0x90],
+    0,
   ];
 }
 
