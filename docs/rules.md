@@ -203,7 +203,9 @@ direct and inherited `protocol_t.instanceProperties`, and
 `protocol_t._classProperties`, including type encodings and property attributes
 that reference Objective-C classes.
 Objective-C category instance and class method lists are resolved from
-`__objc_catlist` and `__objc_nlcatlist` through `category_t` metadata.
+`__objc_catlist` and `__objc_nlcatlist` through `category_t` metadata. Category
+names and their local target class names are also reported as structured
+metadata.
 For modern arm64 and arm64e Mach-O binaries, Objective-C metadata pointers
 encoded as dyld chained 64-bit offset pointers or arm64e authenticated rebase
 pointers are normalized back to section virtual addresses when the target

@@ -1356,6 +1356,24 @@ void main() {
       );
     });
 
+    test('resolves Objective-C category metadata from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCCategoryMethodList(
+          className: 'RunnerViewController',
+          categoryName: 'Location',
+          instanceMethodNames: ['requestWhenInUseAuthorization'],
+          classMethodNames: const [],
+        ),
+      );
+
+      expect(report.objcCategories.single.name, 'Location');
+      expect(report.objcCategories.single.className, 'RunnerViewController');
+      expect(
+        report.objcCategories.single.sourceSection,
+        '__DATA_CONST.__objc_catlist',
+      );
+    });
+
     test('resolves Objective-C ivar and property lists from bytes', () {
       final report = const MachOParser().parse(
         thinMachOWithObjCFieldMetadata(
@@ -1589,6 +1607,30 @@ void main() {
           'userNotificationCenter:openSettingsForNotification:',
         );
         expect(report.objcMethods.single.className, 'NotificationDelegate');
+      },
+    );
+
+    test(
+      'resolves Objective-C category metadata from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithObjCCategoryMethodList(
+              className: 'NotificationDelegate',
+              categoryName: 'Authorization',
+              instanceMethodNames: ['authorizationStatus'],
+              classMethodNames: const [],
+              paddingBeforeData: 4096,
+            ),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(report.objcCategories.single.name, 'Authorization');
+        expect(report.objcCategories.single.className, 'NotificationDelegate');
       },
     );
 

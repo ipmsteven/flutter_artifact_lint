@@ -31,6 +31,7 @@ class MachOReport {
     this.dyldExportSymbols = const [],
     this.objcSelectors = const [],
     this.objcClasses = const [],
+    this.objcCategories = const [],
     this.objcProtocols = const [],
     this.objcMethods = const [],
     this.objcIvars = const [],
@@ -65,6 +66,7 @@ class MachOReport {
   final List<MachODyldExportSymbol> dyldExportSymbols;
   final List<MachOObjCSelector> objcSelectors;
   final List<MachOObjCClass> objcClasses;
+  final List<MachOObjCCategory> objcCategories;
   final List<MachOObjCProtocol> objcProtocols;
   final List<MachOObjCMethod> objcMethods;
   final List<MachOObjCIvar> objcIvars;
@@ -336,6 +338,20 @@ class MachOObjCClass {
   final String? superclassName;
 }
 
+class MachOObjCCategory {
+  const MachOObjCCategory({
+    required this.name,
+    required this.className,
+    required this.sourceSection,
+    required this.categoryAddress,
+  });
+
+  final String name;
+  final String? className;
+  final String sourceSection;
+  final int categoryAddress;
+}
+
 class MachOObjCProtocol {
   const MachOObjCProtocol({
     required this.name,
@@ -584,6 +600,7 @@ class MachOParser {
       thinReport.dyldExportSymbols,
       thinReport.objcSelectors,
       thinReport.objcClasses,
+      thinReport.objcCategories,
       thinReport.objcProtocols,
       thinReport.objcMethods,
       thinReport.objcIvars,
@@ -646,6 +663,7 @@ class MachOParser {
     final dyldExportSymbols = <MachODyldExportSymbol>[];
     final objcSelectors = <MachOObjCSelector>[];
     final objcClasses = <MachOObjCClass>[];
+    final objcCategories = <MachOObjCCategory>[];
     final objcProtocols = <MachOObjCProtocol>[];
     final objcMethods = <MachOObjCMethod>[];
     final objcIvars = <MachOObjCIvar>[];
@@ -697,6 +715,7 @@ class MachOParser {
       dyldExportSymbols.addAll(sliceReport.dyldExportSymbols);
       objcSelectors.addAll(sliceReport.objcSelectors);
       objcClasses.addAll(sliceReport.objcClasses);
+      objcCategories.addAll(sliceReport.objcCategories);
       objcProtocols.addAll(sliceReport.objcProtocols);
       objcMethods.addAll(sliceReport.objcMethods);
       objcIvars.addAll(sliceReport.objcIvars);
@@ -732,6 +751,7 @@ class MachOParser {
       dyldExportSymbols,
       objcSelectors,
       objcClasses,
+      objcCategories,
       objcProtocols,
       objcMethods,
       objcIvars,
@@ -867,6 +887,13 @@ class MachOParser {
       is64Bit: thinIs64Bit,
       segments: report.segments,
     );
+    final objcCategories = _readObjCCategoriesFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      is64Bit: thinIs64Bit,
+      segments: report.segments,
+    );
     final objcProtocols = _readObjCProtocolsFromFile(
       raf,
       fileOffset,
@@ -915,6 +942,7 @@ class MachOParser {
         swiftFields.isEmpty &&
         objcSelectors.isEmpty &&
         objcClasses.isEmpty &&
+        objcCategories.isEmpty &&
         objcProtocols.isEmpty &&
         objcMethods.isEmpty &&
         objcIvars.isEmpty &&
@@ -955,6 +983,7 @@ class MachOParser {
       [...report.dyldExportSymbols, ...dyldExportSymbols],
       [...report.objcSelectors, ...objcSelectors],
       [...report.objcClasses, ...objcClasses],
+      [...report.objcCategories, ...objcCategories],
       [...report.objcProtocols, ...objcProtocols],
       [...report.objcMethods, ...objcMethods],
       [...report.objcIvars, ...objcIvars],
@@ -1006,6 +1035,7 @@ class MachOParser {
     final dyldExportSymbols = <MachODyldExportSymbol>[];
     final objcSelectors = <MachOObjCSelector>[];
     final objcClasses = <MachOObjCClass>[];
+    final objcCategories = <MachOObjCCategory>[];
     final objcProtocols = <MachOObjCProtocol>[];
     final objcMethods = <MachOObjCMethod>[];
     final objcIvars = <MachOObjCIvar>[];
@@ -1054,6 +1084,7 @@ class MachOParser {
         dyldExportSymbols.addAll(sliceReport.dyldExportSymbols);
         objcSelectors.addAll(sliceReport.objcSelectors);
         objcClasses.addAll(sliceReport.objcClasses);
+        objcCategories.addAll(sliceReport.objcCategories);
         objcProtocols.addAll(sliceReport.objcProtocols);
         objcMethods.addAll(sliceReport.objcMethods);
         objcIvars.addAll(sliceReport.objcIvars);
@@ -1092,6 +1123,7 @@ class MachOParser {
       dyldExportSymbols,
       objcSelectors,
       objcClasses,
+      objcCategories,
       objcProtocols,
       objcMethods,
       objcIvars,
@@ -1384,6 +1416,11 @@ class MachOParser {
       is64Bit: header.is64Bit,
       segments: segments,
     );
+    final objcCategories = _readObjCCategoriesFromBytes(
+      bytes,
+      is64Bit: header.is64Bit,
+      segments: segments,
+    );
     final objcProtocols = _readObjCProtocolsFromBytes(
       bytes,
       is64Bit: header.is64Bit,
@@ -1434,6 +1471,7 @@ class MachOParser {
       dyldExportSymbols: dyldExportSymbols,
       objcSelectors: objcSelectors,
       objcClasses: objcClasses,
+      objcCategories: objcCategories,
       objcProtocols: objcProtocols,
       objcMethods: objcMethods,
       objcIvars: objcIvars,
@@ -1471,6 +1509,7 @@ MachOReport _deduplicatedReport(
   List<MachODyldExportSymbol> dyldExportSymbols = const [],
   List<MachOObjCSelector> objcSelectors = const [],
   List<MachOObjCClass> objcClasses = const [],
+  List<MachOObjCCategory> objcCategories = const [],
   List<MachOObjCProtocol> objcProtocols = const [],
   List<MachOObjCMethod> objcMethods = const [],
   List<MachOObjCIvar> objcIvars = const [],
@@ -1655,6 +1694,12 @@ MachOReport _deduplicatedReport(
         objcClass;
   }
 
+  final byObjCCategory = <String, MachOObjCCategory>{};
+  for (final category in objcCategories) {
+    byObjCCategory['${category.sourceSection}|${category.name}|${category.className}|${category.categoryAddress}'] =
+        category;
+  }
+
   final byObjCProtocol = <String, MachOObjCProtocol>{};
   for (final objcProtocol in objcProtocols) {
     byObjCProtocol['${objcProtocol.sourceSection}|${objcProtocol.name}|${objcProtocol.protocolAddress}'] =
@@ -1711,6 +1756,7 @@ MachOReport _deduplicatedReport(
     dyldExportSymbols: byDyldExportSymbol.values.toList(),
     objcSelectors: byObjCSelector.values.toList(),
     objcClasses: byObjCClass.values.toList(),
+    objcCategories: byObjCCategory.values.toList(),
     objcProtocols: byObjCProtocol.values.toList(),
     objcMethods: byObjCMethod.values.toList(),
     objcIvars: byObjCIvar.values.toList(),
@@ -1763,6 +1809,8 @@ class _ObjCClassMetadata {
 
 class _ObjCCategoryMetadata {
   const _ObjCCategoryMetadata({
+    required this.categoryName,
+    required this.className,
     required this.ownerName,
     required this.instanceMethodsAddress,
     required this.classMethodsAddress,
@@ -1771,6 +1819,8 @@ class _ObjCCategoryMetadata {
     required this.classPropertiesAddress,
   });
 
+  final String? categoryName;
+  final String? className;
   final String ownerName;
   final int instanceMethodsAddress;
   final int classMethodsAddress;
@@ -2282,6 +2332,63 @@ List<MachOObjCClass> _readObjCClassesFromFile(
   }
 
   return classes;
+}
+
+List<MachOObjCCategory> _readObjCCategoriesFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSegment> segments,
+}) {
+  final categories = <MachOObjCCategory>[];
+  final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
+  final stringSections = _stringSections(segments).toList();
+
+  for (final section in _objcCategoryListSections(segments)) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    final sectionBytes = _readRange(
+      raf,
+      fileOffset + section.fileOffset,
+      section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final categoryAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
+      final metadata = _readObjCCategoryMetadataFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        categoryAddress: categoryAddress,
+      );
+      final categoryName = metadata?.categoryName;
+      if (categoryName == null) continue;
+
+      categories.add(
+        MachOObjCCategory(
+          name: categoryName,
+          className: metadata?.className,
+          sourceSection: section.displayName,
+          categoryAddress: categoryAddress,
+        ),
+      );
+    }
+  }
+
+  return categories;
 }
 
 List<MachOObjCProtocol> _readObjCProtocolsFromFile(
@@ -3603,6 +3710,58 @@ List<MachOObjCClass> _readObjCClassesFromBytes(
   }
 
   return classes;
+}
+
+List<MachOObjCCategory> _readObjCCategoriesFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSegment> segments,
+}) {
+  final categories = <MachOObjCCategory>[];
+  final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
+  final stringSections = _stringSections(segments).toList();
+
+  for (final section in _objcCategoryListSections(segments)) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    final sectionBytes = bytes.sublist(
+      section.fileOffset,
+      section.fileOffset + section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final categoryAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
+      final metadata = _readObjCCategoryMetadataFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        categoryAddress: categoryAddress,
+      );
+      final categoryName = metadata?.categoryName;
+      if (categoryName == null) continue;
+
+      categories.add(
+        MachOObjCCategory(
+          name: categoryName,
+          className: metadata?.className,
+          sourceSection: section.displayName,
+          categoryAddress: categoryAddress,
+        ),
+      );
+    }
+  }
+
+  return categories;
 }
 
 List<MachOObjCProtocol> _readObjCProtocolsFromBytes(
@@ -5275,6 +5434,8 @@ _ObjCCategoryMetadata? _readObjCCategoryMetadataFromFile(
   if (ownerName == null) return null;
 
   return _ObjCCategoryMetadata(
+    categoryName: categoryName,
+    className: className,
     ownerName: ownerName,
     instanceMethodsAddress:
         _readPointerAtAddressFromFile(
@@ -5367,6 +5528,8 @@ _ObjCCategoryMetadata? _readObjCCategoryMetadataFromBytes(
   if (ownerName == null) return null;
 
   return _ObjCCategoryMetadata(
+    categoryName: categoryName,
+    className: className,
     ownerName: ownerName,
     instanceMethodsAddress:
         _readPointerAtAddressFromBytes(

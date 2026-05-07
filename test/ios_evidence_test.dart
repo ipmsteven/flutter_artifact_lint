@@ -370,6 +370,32 @@ void main() {
   );
 
   test(
+    'reports parsed Objective-C category sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithObjCCategory(
+          className: 'RunnerViewController',
+          categoryName: 'Location',
+        ),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['Location'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor(['Location'])['Location'],
+        contains('${binary.path}#__DATA_CONST.__objc_catlist'),
+      );
+    },
+  );
+
+  test(
     'reports parsed Objective-C superclass sources for token evidence',
     () async {
       final root = await Directory.systemTemp.createTemp('fal_evidence_');
@@ -1085,6 +1111,94 @@ List<int> thinMachOWithObjCClassRef(
   ];
 }
 
+List<int> thinMachOWithObjCCategory({
+  required String className,
+  required String categoryName,
+}) {
+  final classNameAddress = 0x100000100;
+  final classAddress = 0x100000800;
+  final classRoAddress = 0x100001000;
+  final catlistAddress = 0x100001800;
+  final namesData = cStringBytes([className, categoryName]);
+  final nameOffsets = stringOffsets([className, categoryName]);
+  final classData = objcClass64Bytes(classRoAddress);
+  final classRoData = objcClassRo64Bytes(classNameAddress + nameOffsets[0]);
+  final categoryAddress = classRoAddress + classRoData.length;
+  final categoryData = objcCategory64Bytes(
+    nameAddress: classNameAddress + nameOffsets[1],
+    classAddress: classAddress,
+  );
+  final catlistData = u64(categoryAddress);
+  final commandsSize = 4 * (72 + 80);
+  final classNameOffset = 32 + commandsSize;
+  final classOffset = classNameOffset + namesData.length;
+  final classRoOffset = classOffset + classData.length;
+  final catlistOffset =
+      classRoOffset + classRoData.length + categoryData.length;
+
+  final textCommand = machoSegment64AddressCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: classNameAddress,
+      fileOffset: classNameOffset,
+      size: namesData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressCommand('__DATA', [
+    (
+      name: '__objc_data',
+      segmentName: '__DATA',
+      address: classAddress,
+      fileOffset: classOffset,
+      size: classData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: classRoAddress,
+      fileOffset: classRoOffset,
+      size: classRoData.length + categoryData.length,
+    ),
+  ]);
+  final catlistCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: '__objc_catlist',
+      segmentName: '__DATA_CONST',
+      address: catlistAddress,
+      fileOffset: catlistOffset,
+      size: catlistData.length,
+    ),
+  ]);
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(4),
+    ...u32(
+      textCommand.length +
+          dataCommand.length +
+          constCommand.length +
+          catlistCommand.length,
+    ),
+    ...u32(0),
+    ...u32(0),
+    ...textCommand,
+    ...dataCommand,
+    ...constCommand,
+    ...catlistCommand,
+    ...namesData,
+    ...classData,
+    ...classRoData,
+    ...categoryData,
+    ...catlistData,
+  ];
+}
+
 List<int> thinMachOWithObjCProtocolRefs(
   List<String> protocolNames, {
   String sectionName = '__objc_protolist',
@@ -1577,6 +1691,20 @@ List<int> objcClassRo64Bytes(int nameAddress, {int baseMethodsAddress = 0}) {
     nameAddress,
     baseMethodsAddress: baseMethodsAddress,
   );
+}
+
+List<int> objcCategory64Bytes({
+  required int nameAddress,
+  required int classAddress,
+}) {
+  return [
+    ...u64(nameAddress),
+    ...u64(classAddress),
+    ...u64(0),
+    ...u64(0),
+    ...u64(0),
+    ...u64(0),
+  ];
 }
 
 List<int> objcExtendedClassRo64Bytes(

@@ -341,6 +341,18 @@ class IosEvidenceExtractor {
         }
       }
 
+      for (final category in machoReport.objcCategories) {
+        for (final token in _matchedTokens(category.name, tokens)) {
+          addEvidence(token, '${entity.path}#${category.sourceSection}');
+        }
+        final className = category.className;
+        if (className != null) {
+          for (final token in _matchedTokens(className, tokens)) {
+            addEvidence(token, '${entity.path}#${category.sourceSection}');
+          }
+        }
+      }
+
       for (final objcProtocol in machoReport.objcProtocols) {
         for (final token in _matchedTokens(objcProtocol.name, tokens)) {
           addEvidence(token, '${entity.path}#${objcProtocol.sourceSection}');
