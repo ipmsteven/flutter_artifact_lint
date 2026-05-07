@@ -56,7 +56,14 @@ class MachOBuildVersionEvidence {
   final MachOBuildVersion buildVersion;
 }
 
-enum MachOMetadataKind { rpath, dylibId, uuid, sourceVersion, codeSignature }
+enum MachOMetadataKind {
+  rpath,
+  dylibId,
+  uuid,
+  sourceVersion,
+  codeSignature,
+  encryptionInfo,
+}
 
 class MachOMetadataEvidence {
   const MachOMetadataEvidence({
@@ -185,6 +192,17 @@ class IosEvidenceExtractor {
             sourcePath: entity.path,
             value:
                 'offset ${codeSignature.dataOffset}, size ${codeSignature.dataSize}',
+          ),
+        );
+      }
+
+      for (final encryptionInfo in machoReport.encryptionInfos) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.encryptionInfo,
+            sourcePath: entity.path,
+            value:
+                'offset ${encryptionInfo.cryptOffset}, size ${encryptionInfo.cryptSize}, crypt id ${encryptionInfo.cryptId}',
           ),
         );
       }

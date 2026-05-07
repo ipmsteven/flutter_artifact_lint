@@ -221,6 +221,43 @@ void main() {
       expect(report.codeSignatures.single.dataSize, 512);
     });
 
+    test('reads LC_ENCRYPTION_INFO metadata', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoEncryptionInfoCommand(
+            cryptOffset: 8192,
+            cryptSize: 4096,
+            cryptId: 1,
+          ),
+        ]),
+      );
+
+      expect(report.encryptionInfos, hasLength(1));
+      expect(report.encryptionInfos.single.cryptOffset, 8192);
+      expect(report.encryptionInfos.single.cryptSize, 4096);
+      expect(report.encryptionInfos.single.cryptId, 1);
+      expect(report.encryptionInfos.single.encrypted, isTrue);
+    });
+
+    test('reads LC_ENCRYPTION_INFO_64 metadata', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoEncryptionInfoCommand(
+            cryptOffset: 12288,
+            cryptSize: 0,
+            cryptId: 0,
+            command: 0x2c,
+          ),
+        ]),
+      );
+
+      expect(report.encryptionInfos, hasLength(1));
+      expect(report.encryptionInfos.single.cryptOffset, 12288);
+      expect(report.encryptionInfos.single.cryptSize, 0);
+      expect(report.encryptionInfos.single.cryptId, 0);
+      expect(report.encryptionInfos.single.encrypted, isFalse);
+    });
+
     test('reads LC_SEGMENT_64 segment and section names', () {
       final report = const MachOParser().parse(
         thinMachO([
@@ -4206,6 +4243,22 @@ List<int> machoCodeSignatureCommand({
     ...u32(16),
     ...u32(dataOffset),
     ...u32(dataSize),
+  ];
+}
+
+List<int> machoEncryptionInfoCommand({
+  required int cryptOffset,
+  required int cryptSize,
+  required int cryptId,
+  int command = 0x21,
+}) {
+  return [
+    ...u32(command),
+    ...u32(command == 0x2c ? 24 : 20),
+    ...u32(cryptOffset),
+    ...u32(cryptSize),
+    ...u32(cryptId),
+    if (command == 0x2c) ...u32(0),
   ];
 }
 

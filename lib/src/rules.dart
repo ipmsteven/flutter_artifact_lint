@@ -179,6 +179,15 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports LC_CODE_SIGNATURE offset and size metadata.',
     fix: 'No action required.',
   ),
+  'ios.macho.encryption_info': RuleDefinition(
+    ruleId: 'ios.macho.encryption_info',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O encryption info',
+    description:
+        'Reports LC_ENCRYPTION_INFO offset, size, and crypt id metadata.',
+    fix: 'No action required.',
+  ),
   'ios.permission.camera.empty': RuleDefinition(
     ruleId: 'ios.permission.camera.empty',
     defaultLevel: FindingLevel.failed,

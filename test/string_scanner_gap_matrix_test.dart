@@ -126,6 +126,26 @@ void main() {
         expect(_ruleIds(result.info), contains('ios.macho.code_signature'));
       },
     );
+
+    test('reports FairPlay encryption info load command metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([
+          _machOEncryptionInfoCommand(
+            cryptOffset: 8192,
+            cryptSize: 4096,
+            cryptId: 1,
+          ),
+        ]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.encryption_info',
+      );
+
+      expect(finding.message, contains('offset 8192'));
+      expect(finding.message, contains('size 4096'));
+      expect(finding.message, contains('crypt id 1'));
+    });
   });
 
   group('Mach-O architecture parser acceptance', () {
@@ -346,6 +366,20 @@ List<int> _machOCodeSignatureCommand({
   required int dataSize,
 }) {
   return [..._u32(0x1d), ..._u32(16), ..._u32(dataOffset), ..._u32(dataSize)];
+}
+
+List<int> _machOEncryptionInfoCommand({
+  required int cryptOffset,
+  required int cryptSize,
+  required int cryptId,
+}) {
+  return [
+    ..._u32(0x21),
+    ..._u32(20),
+    ..._u32(cryptOffset),
+    ..._u32(cryptSize),
+    ..._u32(cryptId),
+  ];
 }
 
 int _sourceVersion(int a, int b, int c, int d, int e) {

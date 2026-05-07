@@ -11,6 +11,7 @@ class MachOReport {
     this.uuids = const [],
     this.sourceVersions = const [],
     this.codeSignatures = const [],
+    this.encryptionInfos = const [],
     this.segments = const [],
     this.symbolTables = const [],
     this.symbols = const [],
@@ -41,6 +42,7 @@ class MachOReport {
   final List<MachOUuid> uuids;
   final List<MachOSourceVersion> sourceVersions;
   final List<MachOCodeSignature> codeSignatures;
+  final List<MachOEncryptionInfo> encryptionInfos;
   final List<MachOSegment> segments;
   final List<MachOSymbolTable> symbolTables;
   final List<MachOSymbol> symbols;
@@ -144,6 +146,20 @@ class MachOCodeSignature {
 
   final int dataOffset;
   final int dataSize;
+}
+
+class MachOEncryptionInfo {
+  const MachOEncryptionInfo({
+    required this.cryptOffset,
+    required this.cryptSize,
+    required this.cryptId,
+  });
+
+  final int cryptOffset;
+  final int cryptSize;
+  final int cryptId;
+
+  bool get encrypted => cryptId != 0;
 }
 
 class MachOSegment {
@@ -451,6 +467,7 @@ class MachOParser {
       thinReport.uuids,
       thinReport.sourceVersions,
       thinReport.codeSignatures,
+      thinReport.encryptionInfos,
       thinReport.segments,
       thinReport.symbolTables,
       thinReport.symbols,
@@ -509,6 +526,7 @@ class MachOParser {
     final uuids = <MachOUuid>[];
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
+    final encryptionInfos = <MachOEncryptionInfo>[];
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
@@ -556,6 +574,7 @@ class MachOParser {
       uuids.addAll(sliceReport.uuids);
       sourceVersions.addAll(sliceReport.sourceVersions);
       codeSignatures.addAll(sliceReport.codeSignatures);
+      encryptionInfos.addAll(sliceReport.encryptionInfos);
       segments.addAll(sliceReport.segments);
       symbolTables.addAll(sliceReport.symbolTables);
       symbols.addAll(sliceReport.symbols);
@@ -587,6 +606,7 @@ class MachOParser {
       uuids,
       sourceVersions,
       codeSignatures,
+      encryptionInfos,
       segments,
       symbolTables,
       symbols,
@@ -775,6 +795,7 @@ class MachOParser {
       report.uuids,
       report.sourceVersions,
       report.codeSignatures,
+      report.encryptionInfos,
       report.segments,
       report.symbolTables,
       [...report.symbols, ...symbols],
@@ -826,6 +847,7 @@ class MachOParser {
     final uuids = <MachOUuid>[];
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
+    final encryptionInfos = <MachOEncryptionInfo>[];
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
@@ -870,6 +892,7 @@ class MachOParser {
         uuids.addAll(sliceReport.uuids);
         sourceVersions.addAll(sliceReport.sourceVersions);
         codeSignatures.addAll(sliceReport.codeSignatures);
+        encryptionInfos.addAll(sliceReport.encryptionInfos);
         segments.addAll(sliceReport.segments);
         symbolTables.addAll(sliceReport.symbolTables);
         symbols.addAll(sliceReport.symbols);
@@ -904,6 +927,7 @@ class MachOParser {
       uuids,
       sourceVersions,
       codeSignatures,
+      encryptionInfos,
       segments,
       symbolTables,
       symbols,
@@ -943,6 +967,7 @@ class MachOParser {
     final uuids = <MachOUuid>[];
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
+    final encryptionInfos = <MachOEncryptionInfo>[];
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
@@ -1114,6 +1139,16 @@ class MachOParser {
         );
       }
 
+      if (_isEncryptionInfoCommand(command, commandSize)) {
+        encryptionInfos.add(
+          MachOEncryptionInfo(
+            cryptOffset: _readU32(bytes, offset + 8),
+            cryptSize: _readU32(bytes, offset + 12),
+            cryptId: _readU32(bytes, offset + 16),
+          ),
+        );
+      }
+
       offset += commandSize;
     }
 
@@ -1189,6 +1224,7 @@ class MachOParser {
       uuids: uuids,
       sourceVersions: sourceVersions,
       codeSignatures: codeSignatures,
+      encryptionInfos: encryptionInfos,
       segments: segments,
       symbolTables: symbolTables,
       symbols: symbols,
@@ -1222,6 +1258,7 @@ MachOReport _deduplicatedReport(
   List<MachOUuid> uuids = const [],
   List<MachOSourceVersion> sourceVersions = const [],
   List<MachOCodeSignature> codeSignatures = const [],
+  List<MachOEncryptionInfo> encryptionInfos = const [],
   List<MachOSegment> segments = const [],
   List<MachOSymbolTable> symbolTables = const [],
   List<MachOSymbol> symbols = const [],
@@ -1287,6 +1324,12 @@ MachOReport _deduplicatedReport(
   for (final codeSignature in codeSignatures) {
     byCodeSignature['${codeSignature.dataOffset}|${codeSignature.dataSize}'] =
         codeSignature;
+  }
+
+  final byEncryptionInfo = <String, MachOEncryptionInfo>{};
+  for (final encryptionInfo in encryptionInfos) {
+    byEncryptionInfo['${encryptionInfo.cryptOffset}|${encryptionInfo.cryptSize}|${encryptionInfo.cryptId}'] =
+        encryptionInfo;
   }
 
   final sectionsBySegment = <String, Map<String, MachOSection>>{};
@@ -1423,6 +1466,7 @@ MachOReport _deduplicatedReport(
     uuids: byUuid.values.toList(),
     sourceVersions: bySourceVersion.values.toList(),
     codeSignatures: byCodeSignature.values.toList(),
+    encryptionInfos: byEncryptionInfo.values.toList(),
     segments: [
       for (final entry in sectionsBySegment.entries)
         MachOSegment(name: entry.key, sections: entry.value.values.toList()),
@@ -1566,6 +1610,11 @@ bool _isDylibLoadCommand(int command) {
 
 bool _isDyldInfoCommand(int command) {
   return command == _lcDyldInfo || command == _lcDyldInfoOnly;
+}
+
+bool _isEncryptionInfoCommand(int command, int commandSize) {
+  return (command == _lcEncryptionInfo && commandSize >= 20) ||
+      (command == _lcEncryptionInfo64 && commandSize >= 24);
 }
 
 int? _legacyVersionPlatform(int command) {
@@ -6942,10 +6991,12 @@ const _lcRpath = 0x8000001c;
 const _lcCodeSignature = 0x1d;
 const _lcReexportDylib = 0x8000001f;
 const _lcLazyLoadDylib = 0x20;
+const _lcEncryptionInfo = 0x21;
 const _lcDyldInfo = 0x22;
 const _lcDyldInfoOnly = 0x80000022;
 const _lcLoadUpwardDylib = 0x80000023;
 const _lcSourceVersion = 0x2a;
+const _lcEncryptionInfo64 = 0x2c;
 const _lcBuildVersion = 0x32;
 const _lcDyldExportsTrie = 0x80000033;
 const _lcDyldChainedFixups = 0x80000034;
