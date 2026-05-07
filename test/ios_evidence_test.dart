@@ -343,6 +343,34 @@ void main() {
   );
 
   test(
+    'reports parsed Objective-C superclass sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithObjCClassRef(
+          'RunnerNotificationExtension',
+          superclassName: 'UNNotificationServiceExtension',
+        ),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['UNNotificationServiceExtension'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor([
+          'UNNotificationServiceExtension',
+        ])['UNNotificationServiceExtension'],
+        contains('${binary.path}#__DATA_CONST.__objc_classrefs'),
+      );
+    },
+  );
+
+  test(
     'reports parsed Objective-C protocol reference sources for token evidence',
     () async {
       final root = await Directory.systemTemp.createTemp('fal_evidence_');
@@ -923,20 +951,39 @@ List<int> thinMachOWithObjCSelectorRefs(List<String> selectors) {
   ];
 }
 
-List<int> thinMachOWithObjCClassRef(String className) {
+List<int> thinMachOWithObjCClassRef(
+  String className, {
+  String? superclassName,
+}) {
   final classNameAddress = 0x100000100;
   final classAddress = 0x100000800;
   final classRoAddress = 0x100001000;
   final classRefAddress = 0x100001800;
-  final classNameData = cStringBytes([className]);
-  final classData = objcClass64Bytes(classRoAddress | 0x1);
-  final classRoData = objcClassRo64Bytes(classNameAddress);
+  final classNames = [className, ?superclassName];
+  final classNameData = cStringBytes(classNames);
+  final classNameOffsets = stringOffsets(classNames);
+  final superclassAddress = superclassName == null ? 0 : classAddress + 40;
+  final classRoData = objcClassRo64Bytes(
+    classNameAddress + classNameOffsets[0],
+  );
+  final superclassRoAddress = classRoAddress + classRoData.length;
+  final classData = [
+    ...objcClass64Bytes(
+      classRoAddress | 0x1,
+      superclassAddress: superclassAddress,
+    ),
+    if (superclassName != null) ...objcClass64Bytes(superclassRoAddress),
+  ];
+  final superclassRoData = superclassName == null
+      ? <int>[]
+      : objcClassRo64Bytes(classNameAddress + classNameOffsets[1]);
   final classRefData = u64(classAddress);
   final commandsSize = 4 * (72 + 80);
   final classNameOffset = 32 + commandsSize;
   final classOffset = classNameOffset + classNameData.length;
   final classRoOffset = classOffset + classData.length;
-  final classRefOffset = classRoOffset + classRoData.length;
+  final classRefOffset =
+      classRoOffset + classRoData.length + superclassRoData.length;
 
   final textCommand = machoSegment64AddressCommand('__TEXT', [
     (
@@ -962,7 +1009,7 @@ List<int> thinMachOWithObjCClassRef(String className) {
       segmentName: '__DATA_CONST',
       address: classRoAddress,
       fileOffset: classRoOffset,
-      size: classRoData.length,
+      size: classRoData.length + superclassRoData.length,
     ),
   ]);
   final refsCommand = machoSegment64AddressCommand('__DATA_CONST', [
@@ -996,6 +1043,7 @@ List<int> thinMachOWithObjCClassRef(String className) {
     ...classNameData,
     ...classData,
     ...classRoData,
+    ...superclassRoData,
     ...classRefData,
   ];
 }
@@ -1477,8 +1525,14 @@ List<int> stringOffsets(List<String> values) {
   return offsets;
 }
 
-List<int> objcClass64Bytes(int dataAddress) {
-  return [...u64(0), ...u64(0), ...u64(0), ...u64(0), ...u64(dataAddress)];
+List<int> objcClass64Bytes(int dataAddress, {int superclassAddress = 0}) {
+  return [
+    ...u64(0),
+    ...u64(superclassAddress),
+    ...u64(0),
+    ...u64(0),
+    ...u64(dataAddress),
+  ];
 }
 
 List<int> objcClassRo64Bytes(int nameAddress, {int baseMethodsAddress = 0}) {

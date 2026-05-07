@@ -325,11 +325,13 @@ class MachOObjCClass {
     required this.name,
     required this.sourceSection,
     required this.classAddress,
+    this.superclassName,
   });
 
   final String name;
   final String sourceSection;
   final int classAddress;
+  final String? superclassName;
 }
 
 class MachOObjCProtocol {
@@ -1647,7 +1649,7 @@ MachOReport _deduplicatedReport(
 
   final byObjCClass = <String, MachOObjCClass>{};
   for (final objcClass in objcClasses) {
-    byObjCClass['${objcClass.sourceSection}|${objcClass.name}|${objcClass.classAddress}'] =
+    byObjCClass['${objcClass.sourceSection}|${objcClass.name}|${objcClass.superclassName}|${objcClass.classAddress}'] =
         objcClass;
   }
 
@@ -2247,12 +2249,22 @@ List<MachOObjCClass> _readObjCClassesFromFile(
         classAddress: classAddress,
       );
       if (name == null) continue;
+      final superclassName = _readObjCSuperclassNameFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        classAddress: classAddress,
+      );
 
       classes.add(
         MachOObjCClass(
           name: name,
           sourceSection: section.displayName,
           classAddress: classAddress,
+          superclassName: superclassName,
         ),
       );
     }
@@ -3553,12 +3565,20 @@ List<MachOObjCClass> _readObjCClassesFromBytes(
         classAddress: classAddress,
       );
       if (name == null) continue;
+      final superclassName = _readObjCSuperclassNameFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        classAddress: classAddress,
+      );
 
       classes.add(
         MachOObjCClass(
           name: name,
           sourceSection: section.displayName,
           classAddress: classAddress,
+          superclassName: superclassName,
         ),
       );
     }
@@ -3773,6 +3793,40 @@ String? _readObjCClassNameFromFile(
   )?.name;
 }
 
+String? _readObjCSuperclassNameFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int classAddress,
+}) {
+  final superclassAddress = _readPointerAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    classAddress + (is64Bit ? 8 : 4),
+    is64Bit: is64Bit,
+  );
+  if (superclassAddress == null ||
+      superclassAddress == 0 ||
+      superclassAddress == classAddress) {
+    return null;
+  }
+
+  return _readObjCClassNameFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    is64Bit: is64Bit,
+    allSections: allSections,
+    stringSections: stringSections,
+    classAddress: superclassAddress,
+  );
+}
+
 _ObjCClassMetadata? _readObjCClassMetadataFromFile(
   RandomAccessFile raf,
   int fileOffset,
@@ -3877,6 +3931,34 @@ String? _readObjCClassNameFromBytes(
     stringSections: stringSections,
     classAddress: classAddress,
   )?.name;
+}
+
+String? _readObjCSuperclassNameFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int classAddress,
+}) {
+  final superclassAddress = _readPointerAtAddressFromBytes(
+    bytes,
+    allSections,
+    classAddress + (is64Bit ? 8 : 4),
+    is64Bit: is64Bit,
+  );
+  if (superclassAddress == null ||
+      superclassAddress == 0 ||
+      superclassAddress == classAddress) {
+    return null;
+  }
+
+  return _readObjCClassNameFromBytes(
+    bytes,
+    is64Bit: is64Bit,
+    allSections: allSections,
+    stringSections: stringSections,
+    classAddress: superclassAddress,
+  );
 }
 
 String? _readObjCProtocolNameFromFile(

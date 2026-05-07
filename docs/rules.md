@@ -185,7 +185,8 @@ back to `__objc_methname` strings when section virtual addresses and file
 ranges are available.
 Objective-C class references are resolved from `__objc_classrefs` and
 `__objc_classlist` through `class_t` and `class_ro_t` metadata to class-name
-strings when the relevant sections are present.
+strings when the relevant sections are present. Local superclass pointers are
+also followed to recover superclass names.
 Objective-C protocol references are resolved from `__objc_protolist`,
 `__objc_protorefs`, `class_ro_t.baseProtocols`, and `category_t.protocols`
 through `protocol_t` metadata, including inherited `protocol_t.protocols`, to

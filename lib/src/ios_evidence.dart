@@ -327,6 +327,12 @@ class IosEvidenceExtractor {
         for (final token in _matchedTokens(objcClass.name, tokens)) {
           addEvidence(token, '${entity.path}#${objcClass.sourceSection}');
         }
+        final superclassName = objcClass.superclassName;
+        if (superclassName != null) {
+          for (final token in _matchedTokens(superclassName, tokens)) {
+            addEvidence(token, '${entity.path}#${objcClass.sourceSection}');
+          }
+        }
       }
 
       for (final objcProtocol in machoReport.objcProtocols) {

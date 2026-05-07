@@ -946,6 +946,21 @@ void main() {
       );
     });
 
+    test('resolves Objective-C superclass names from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCClassRef(
+          'RunnerNotificationExtension',
+          superclassName: 'UNNotificationServiceExtension',
+        ),
+      );
+
+      expect(report.objcClasses.single.name, 'RunnerNotificationExtension');
+      expect(
+        report.objcClasses.single.superclassName,
+        'UNNotificationServiceExtension',
+      );
+    });
+
     test(
       'resolves Objective-C class references from the file-backed parser',
       () async {
@@ -966,6 +981,30 @@ void main() {
         expect(
           report.objcClasses.single.sourceSection,
           '__DATA_CONST.__objc_classrefs',
+        );
+      },
+    );
+
+    test(
+      'resolves Objective-C superclass names from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithObjCClassRef(
+              'RunnerNotificationExtension',
+              superclassName: 'UNNotificationServiceExtension',
+              paddingBeforeData: 4096,
+            ),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(
+          report.objcClasses.single.superclassName,
+          'UNNotificationServiceExtension',
         );
       },
     );
@@ -2099,21 +2138,38 @@ int chainedPointerArm64eAuthBind(int address, {int imageBase = 0x100000000}) {
 
 List<int> thinMachOWithObjCClassRef(
   String className, {
+  String? superclassName,
   int paddingBeforeData = 0,
 }) {
   final classNameAddress = 0x100000100;
   final classAddress = 0x100000800;
   final classRoAddress = 0x100001000;
   final classRefAddress = 0x100001800;
-  final classNameData = cStringBytes([className]);
-  final classData = objcClass64Bytes(classRoAddress | 0x1);
-  final classRoData = objcClassRo64Bytes(classNameAddress);
+  final classNames = [className, ?superclassName];
+  final classNameData = cStringBytes(classNames);
+  final classNameOffsets = stringOffsets(classNames);
+  final superclassAddress = superclassName == null ? 0 : classAddress + 40;
+  final classRoData = objcClassRo64Bytes(
+    classNameAddress + classNameOffsets[0],
+  );
+  final superclassRoAddress = classRoAddress + classRoData.length;
+  final classData = [
+    ...objcClass64Bytes(
+      classRoAddress | 0x1,
+      superclassAddress: superclassAddress,
+    ),
+    if (superclassName != null) ...objcClass64Bytes(superclassRoAddress),
+  ];
+  final superclassRoData = superclassName == null
+      ? <int>[]
+      : objcClassRo64Bytes(classNameAddress + classNameOffsets[1]);
   final classRefData = u64(classAddress);
   final commandsSize = 4 * (72 + 80);
   final classNameOffset = 32 + commandsSize + paddingBeforeData;
   final classOffset = classNameOffset + classNameData.length;
   final classRoOffset = classOffset + classData.length;
-  final classRefOffset = classRoOffset + classRoData.length;
+  final classRefOffset =
+      classRoOffset + classRoData.length + superclassRoData.length;
 
   final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
     (
@@ -2139,7 +2195,7 @@ List<int> thinMachOWithObjCClassRef(
       segmentName: '__DATA_CONST',
       address: classRoAddress,
       fileOffset: classRoOffset,
-      size: classRoData.length,
+      size: classRoData.length + superclassRoData.length,
     ),
   ]);
   final refsCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
@@ -2169,6 +2225,7 @@ List<int> thinMachOWithObjCClassRef(
     ...classNameData,
     ...classData,
     ...classRoData,
+    ...superclassRoData,
     ...classRefData,
   ];
 }
@@ -4283,10 +4340,14 @@ List<int> stringOffsets(List<String> values) {
   return offsets;
 }
 
-List<int> objcClass64Bytes(int dataAddress, {int isaAddress = 0}) {
+List<int> objcClass64Bytes(
+  int dataAddress, {
+  int isaAddress = 0,
+  int superclassAddress = 0,
+}) {
   return [
     ...u64(isaAddress), // isa
-    ...u64(0), // superclass
+    ...u64(superclassAddress), // superclass
     ...u64(0), // cache
     ...u64(0), // vtable
     ...u64(dataAddress), // class_ro_t pointer, low bits may contain flags
