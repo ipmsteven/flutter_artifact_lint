@@ -174,9 +174,10 @@ Objective-C big and small method lists are resolved from
 `class_ro_t.baseMethods` and local relative method-list lists through
 `method_list_t` entries back to `__objc_methname` strings when the relevant
 Objective-C metadata sections are present.
-Objective-C ivar and property lists are resolved from `class_ro_t.ivars` and
-`class_ro_t.baseProperties`, including type encodings and property attributes
-that reference Objective-C classes.
+Objective-C ivar and property lists are resolved from `class_ro_t.ivars`,
+`class_ro_t.baseProperties`, `category_t.instanceProperties`, and
+`protocol_t.instanceProperties`, including type encodings and property
+attributes that reference Objective-C classes.
 Objective-C category instance and class method lists are resolved from
 `__objc_catlist` and `__objc_nlcatlist` through `category_t` metadata.
 For modern arm64 Mach-O binaries, Objective-C metadata pointers encoded as

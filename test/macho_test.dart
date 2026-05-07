@@ -1027,6 +1027,73 @@ void main() {
       );
     });
 
+    test('resolves Objective-C category property lists from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCCategoryPropertyList(
+          className: 'RunnerViewController',
+          categoryName: 'Location',
+          properties: [
+            (name: 'locationManager', attributes: r'T@"CLLocationManager",N'),
+          ],
+        ),
+      );
+
+      expect(report.objcProperties.map((property) => property.name), [
+        'locationManager',
+      ]);
+      expect(
+        report.objcProperties.single.attributes,
+        r'T@"CLLocationManager",N',
+      );
+      expect(report.objcProperties.single.className, 'RunnerViewController');
+      expect(
+        report.objcProperties.single.sourceSection,
+        '__DATA_CONST.__objc_const',
+      );
+    });
+
+    test('resolves Objective-C protocol property lists from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCProtocolPropertyList(
+          protocolName: 'FlutterPlugin',
+          properties: [(name: 'registrar', attributes: r'T@"NSObject",R')],
+        ),
+      );
+
+      expect(report.objcProperties.map((property) => property.name), [
+        'registrar',
+      ]);
+      expect(report.objcProperties.single.attributes, r'T@"NSObject",R');
+      expect(report.objcProperties.single.className, 'FlutterPlugin');
+      expect(
+        report.objcProperties.single.sourceSection,
+        '__DATA_CONST.__objc_const',
+      );
+    });
+
+    test(
+      'resolves Objective-C class protocol properties without class properties',
+      () {
+        final report = const MachOParser().parse(
+          thinMachOWithObjCClassProtocolPropertyList(
+            className: 'RunnerAppDelegate',
+            protocolName: 'FlutterPlugin',
+            properties: [(name: 'registrar', attributes: r'T@"NSObject",R')],
+          ),
+        );
+
+        expect(report.objcProperties.map((property) => property.name), [
+          'registrar',
+        ]);
+        expect(report.objcProperties.single.attributes, r'T@"NSObject",R');
+        expect(report.objcProperties.single.className, 'FlutterPlugin');
+        expect(
+          report.objcProperties.single.sourceSection,
+          '__DATA_CONST.__objc_const',
+        );
+      },
+    );
+
     test(
       'resolves Objective-C category method lists from the file-backed parser',
       () async {
@@ -2186,6 +2253,397 @@ List<int> thinMachOWithObjCFieldMetadata({
   ];
 }
 
+List<int> thinMachOWithObjCCategoryPropertyList({
+  required String className,
+  required String categoryName,
+  required List<({String name, String attributes})> properties,
+  int paddingBeforeData = 0,
+}) {
+  final classNameAddress = 0x100000100;
+  final propertyNameAddress = 0x100000500;
+  final propertyAttributesAddress = 0x100000900;
+  final classAddress = 0x100001000;
+  final classRoAddress = 0x100001800;
+  final catlistAddress = 0x100002800;
+  final namesData = cStringBytes([className, categoryName]);
+  final nameOffsets = stringOffsets([className, categoryName]);
+  final propertyNameData = cStringBytes([
+    for (final property in properties) property.name,
+  ]);
+  final propertyNameOffsets = stringOffsets([
+    for (final property in properties) property.name,
+  ]);
+  final propertyAttributesData = cStringBytes([
+    for (final property in properties) property.attributes,
+  ]);
+  final propertyAttributesOffsets = stringOffsets([
+    for (final property in properties) property.attributes,
+  ]);
+  final categoryNameAddress = classNameAddress + nameOffsets[1];
+  final classData = objcClass64Bytes(classRoAddress);
+  final classRoData = objcClassRo64Bytes(classNameAddress);
+  final categoryAddress = classRoAddress + classRoData.length;
+  final propertyListAddress = categoryAddress + 48;
+  final propertyListData = objcPropertyList64Bytes([
+    for (var i = 0; i < properties.length; i += 1)
+      (
+        nameAddress: propertyNameAddress + propertyNameOffsets[i],
+        attributesAddress:
+            propertyAttributesAddress + propertyAttributesOffsets[i],
+      ),
+  ]);
+  final categoryData = objcCategory64Bytes(
+    nameAddress: categoryNameAddress,
+    classAddress: classAddress,
+    instanceMethodsAddress: 0,
+    classMethodsAddress: 0,
+    instancePropertiesAddress: propertyListAddress,
+  );
+  final catlistData = u64(categoryAddress);
+  final commandsSize = (72 + 3 * 80) + 3 * (72 + 80);
+  final classNameOffset = 32 + commandsSize + paddingBeforeData;
+  final propertyNameOffset = classNameOffset + namesData.length;
+  final propertyAttributesOffset = propertyNameOffset + propertyNameData.length;
+  final classOffset = propertyAttributesOffset + propertyAttributesData.length;
+  final classRoOffset = classOffset + classData.length;
+  final categoryOffset = classRoOffset + classRoData.length;
+  final propertyListOffset = categoryOffset + categoryData.length;
+  final catlistOffset = propertyListOffset + propertyListData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: classNameAddress,
+      fileOffset: classNameOffset,
+      size: namesData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: propertyNameAddress,
+      fileOffset: propertyNameOffset,
+      size: propertyNameData.length,
+    ),
+    (
+      name: '__objc_methtype',
+      segmentName: '__TEXT',
+      address: propertyAttributesAddress,
+      fileOffset: propertyAttributesOffset,
+      size: propertyAttributesData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressRangeCommand('__DATA', [
+    (
+      name: '__objc_data',
+      segmentName: '__DATA',
+      address: classAddress,
+      fileOffset: classOffset,
+      size: classData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: classRoAddress,
+      fileOffset: classRoOffset,
+      size: classRoData.length + categoryData.length + propertyListData.length,
+    ),
+  ]);
+  final catlistCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_catlist',
+      segmentName: '__DATA_CONST',
+      address: catlistAddress,
+      fileOffset: catlistOffset,
+      size: catlistData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 4,
+      sizeofcmds:
+          textCommand.length +
+          dataCommand.length +
+          constCommand.length +
+          catlistCommand.length,
+    ),
+    ...textCommand,
+    ...dataCommand,
+    ...constCommand,
+    ...catlistCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...namesData,
+    ...propertyNameData,
+    ...propertyAttributesData,
+    ...classData,
+    ...classRoData,
+    ...categoryData,
+    ...propertyListData,
+    ...catlistData,
+  ];
+}
+
+List<int> thinMachOWithObjCProtocolPropertyList({
+  required String protocolName,
+  required List<({String name, String attributes})> properties,
+  int paddingBeforeData = 0,
+}) {
+  final protocolNameAddress = 0x100000100;
+  final propertyNameAddress = 0x100000500;
+  final propertyAttributesAddress = 0x100000900;
+  final protocolAddress = 0x100001000;
+  final protocolListAddress = 0x100002000;
+  final protocolNameData = cStringBytes([protocolName]);
+  final propertyNameData = cStringBytes([
+    for (final property in properties) property.name,
+  ]);
+  final propertyNameOffsets = stringOffsets([
+    for (final property in properties) property.name,
+  ]);
+  final propertyAttributesData = cStringBytes([
+    for (final property in properties) property.attributes,
+  ]);
+  final propertyAttributesOffsets = stringOffsets([
+    for (final property in properties) property.attributes,
+  ]);
+  final propertyListAddress = protocolAddress + 64;
+  final propertyListData = objcPropertyList64Bytes([
+    for (var i = 0; i < properties.length; i += 1)
+      (
+        nameAddress: propertyNameAddress + propertyNameOffsets[i],
+        attributesAddress:
+            propertyAttributesAddress + propertyAttributesOffsets[i],
+      ),
+  ]);
+  final protocolData = objcProtocol64Bytes(
+    protocolNameAddress,
+    instancePropertiesAddress: propertyListAddress,
+  );
+  final protocolListData = u64(protocolAddress);
+  final commandsSize = (72 + 3 * 80) + 2 * (72 + 80);
+  final protocolNameOffset = 32 + commandsSize + paddingBeforeData;
+  final propertyNameOffset = protocolNameOffset + protocolNameData.length;
+  final propertyAttributesOffset = propertyNameOffset + propertyNameData.length;
+  final protocolOffset =
+      propertyAttributesOffset + propertyAttributesData.length;
+  final propertyListOffset = protocolOffset + protocolData.length;
+  final protocolListOffset = propertyListOffset + propertyListData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: protocolNameAddress,
+      fileOffset: protocolNameOffset,
+      size: protocolNameData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: propertyNameAddress,
+      fileOffset: propertyNameOffset,
+      size: propertyNameData.length,
+    ),
+    (
+      name: '__objc_methtype',
+      segmentName: '__TEXT',
+      address: propertyAttributesAddress,
+      fileOffset: propertyAttributesOffset,
+      size: propertyAttributesData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: protocolAddress,
+      fileOffset: protocolOffset,
+      size: protocolData.length + propertyListData.length,
+    ),
+  ]);
+  final protocolListCommand =
+      machoSegment64AddressRangeCommand('__DATA_CONST', [
+        (
+          name: '__objc_protolist',
+          segmentName: '__DATA_CONST',
+          address: protocolListAddress,
+          fileOffset: protocolListOffset,
+          size: protocolListData.length,
+        ),
+      ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 3,
+      sizeofcmds:
+          textCommand.length + constCommand.length + protocolListCommand.length,
+    ),
+    ...textCommand,
+    ...constCommand,
+    ...protocolListCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...protocolNameData,
+    ...propertyNameData,
+    ...propertyAttributesData,
+    ...protocolData,
+    ...propertyListData,
+    ...protocolListData,
+  ];
+}
+
+List<int> thinMachOWithObjCClassProtocolPropertyList({
+  required String className,
+  required String protocolName,
+  required List<({String name, String attributes})> properties,
+  int paddingBeforeData = 0,
+}) {
+  final classNameAddress = 0x100000100;
+  final protocolAndPropertyNameAddress = 0x100000500;
+  final propertyAttributesAddress = 0x100000900;
+  final classAddress = 0x100001000;
+  final classRoAddress = 0x100001800;
+  final classListAddress = 0x100003000;
+  final classNameData = cStringBytes([className]);
+  final protocolAndPropertyNameData = cStringBytes([
+    protocolName,
+    for (final property in properties) property.name,
+  ]);
+  final protocolAndPropertyNameOffsets = stringOffsets([
+    protocolName,
+    for (final property in properties) property.name,
+  ]);
+  final propertyAttributesData = cStringBytes([
+    for (final property in properties) property.attributes,
+  ]);
+  final propertyAttributesOffsets = stringOffsets([
+    for (final property in properties) property.attributes,
+  ]);
+  final classData = objcClass64Bytes(classRoAddress);
+  final classRoLength = objcClassRo64Bytes(
+    classNameAddress,
+    baseProtocolsAddress: 1,
+  ).length;
+  final protocolAddress = classRoAddress + classRoLength;
+  final propertyListAddress = protocolAddress + 64;
+  final propertyListData = objcPropertyList64Bytes([
+    for (var i = 0; i < properties.length; i += 1)
+      (
+        nameAddress:
+            protocolAndPropertyNameAddress +
+            protocolAndPropertyNameOffsets[i + 1],
+        attributesAddress:
+            propertyAttributesAddress + propertyAttributesOffsets[i],
+      ),
+  ]);
+  final protocolListAddress = propertyListAddress + propertyListData.length;
+  final classRoData = objcClassRo64Bytes(
+    classNameAddress,
+    baseProtocolsAddress: protocolListAddress,
+  );
+  final protocolData = objcProtocol64Bytes(
+    protocolAndPropertyNameAddress + protocolAndPropertyNameOffsets.first,
+    instancePropertiesAddress: propertyListAddress,
+  );
+  final protocolListData = objcProtocolList64Bytes([protocolAddress]);
+  final classListData = u64(classAddress);
+  final commandsSize = (72 + 3 * 80) + 3 * (72 + 80);
+  final classNameOffset = 32 + commandsSize + paddingBeforeData;
+  final protocolAndPropertyNameOffset = classNameOffset + classNameData.length;
+  final propertyAttributesOffset =
+      protocolAndPropertyNameOffset + protocolAndPropertyNameData.length;
+  final classOffset = propertyAttributesOffset + propertyAttributesData.length;
+  final classRoOffset = classOffset + classData.length;
+  final classListOffset =
+      classRoOffset +
+      classRoData.length +
+      protocolData.length +
+      propertyListData.length +
+      protocolListData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: classNameAddress,
+      fileOffset: classNameOffset,
+      size: classNameData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: protocolAndPropertyNameAddress,
+      fileOffset: protocolAndPropertyNameOffset,
+      size: protocolAndPropertyNameData.length,
+    ),
+    (
+      name: '__objc_methtype',
+      segmentName: '__TEXT',
+      address: propertyAttributesAddress,
+      fileOffset: propertyAttributesOffset,
+      size: propertyAttributesData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressRangeCommand('__DATA', [
+    (
+      name: '__objc_data',
+      segmentName: '__DATA',
+      address: classAddress,
+      fileOffset: classOffset,
+      size: classData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: classRoAddress,
+      fileOffset: classRoOffset,
+      size:
+          classRoData.length +
+          protocolData.length +
+          propertyListData.length +
+          protocolListData.length,
+    ),
+  ]);
+  final classListCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_classlist',
+      segmentName: '__DATA_CONST',
+      address: classListAddress,
+      fileOffset: classListOffset,
+      size: classListData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 4,
+      sizeofcmds:
+          textCommand.length +
+          dataCommand.length +
+          constCommand.length +
+          classListCommand.length,
+    ),
+    ...textCommand,
+    ...dataCommand,
+    ...constCommand,
+    ...classListCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...classNameData,
+    ...protocolAndPropertyNameData,
+    ...propertyAttributesData,
+    ...classData,
+    ...classRoData,
+    ...protocolData,
+    ...propertyListData,
+    ...protocolListData,
+    ...classListData,
+  ];
+}
+
 List<int> thinMachOWithObjCSmallMethodList({
   required String className,
   required List<String> methodNames,
@@ -2709,6 +3167,7 @@ List<int> objcCategory64Bytes({
   required int instanceMethodsAddress,
   required int classMethodsAddress,
   int protocolsAddress = 0,
+  int instancePropertiesAddress = 0,
 }) {
   return [
     ...u64(nameAddress),
@@ -2716,11 +3175,14 @@ List<int> objcCategory64Bytes({
     ...u64(instanceMethodsAddress),
     ...u64(classMethodsAddress),
     ...u64(protocolsAddress),
-    ...u64(0),
+    ...u64(instancePropertiesAddress),
   ];
 }
 
-List<int> objcProtocol64Bytes(int nameAddress) {
+List<int> objcProtocol64Bytes(
+  int nameAddress, {
+  int instancePropertiesAddress = 0,
+}) {
   return [
     ...u64(0), // isa
     ...u64(nameAddress),
@@ -2729,7 +3191,7 @@ List<int> objcProtocol64Bytes(int nameAddress) {
     ...u64(0), // class methods
     ...u64(0), // optional instance methods
     ...u64(0), // optional class methods
-    ...u64(0), // instance properties
+    ...u64(instancePropertiesAddress), // instance properties
   ];
 }
 
