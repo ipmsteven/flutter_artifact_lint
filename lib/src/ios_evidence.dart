@@ -213,6 +213,12 @@ class IosEvidenceExtractor {
         }
       }
 
+      for (final objcMethod in machoReport.objcMethods) {
+        for (final token in _matchedTokens(objcMethod.name, tokens)) {
+          addEvidence(token, '${entity.path}#${objcMethod.sourceSection}');
+        }
+      }
+
       for (final token in _scanTextTokens(
         entity,
         tokens,

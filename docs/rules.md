@@ -134,21 +134,23 @@ currently reports only the linkedit offset and size; it does not validate the
 signature blob or parse embedded entitlements.
 
 Segment and section names are parsed from `LC_SEGMENT` and `LC_SEGMENT_64` as
-internal parser metadata. They are not emitted as user-facing findings yet, but
-they provide the foundation for future Objective-C and Swift metadata scans.
+structured parser metadata. Section, symbol, selector, class, and method names
+can contribute token evidence with the parsed Mach-O source attached.
 Symbol table metadata and symbol names are parsed from `LC_SYMTAB` when the
 symbol and string tables are present in the artifact.
 Dynamic symbol table ranges and indirect-symbol table metadata are parsed from
 `LC_DYSYMTAB`.
 C-string values are parsed from `__cstring`, `__objc_methname`,
-`__objc_classname`, and `__objc_methtype` sections. These are internal parser
-metadata for more precise future Objective-C evidence rules.
+`__objc_classname`, and `__objc_methtype` sections.
 Objective-C selector references are resolved from `__objc_selrefs` pointers
 back to `__objc_methname` strings when section virtual addresses and file
 ranges are available.
 Objective-C class references are resolved from `__objc_classrefs` and
 `__objc_classlist` through `class_t` and `class_ro_t` metadata to class-name
 strings when the relevant sections are present.
+Objective-C method lists are resolved from `class_ro_t.baseMethods` through
+`method_list_t` entries back to `__objc_methname` strings when the relevant
+Objective-C metadata sections are present.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or

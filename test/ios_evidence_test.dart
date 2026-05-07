@@ -147,6 +147,34 @@ void main() {
       );
     },
   );
+
+  test(
+    'reports parsed Objective-C method list sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithObjCMethodList(
+          className: 'RunnerViewController',
+          methodNames: ['requestWhenInUseAuthorization'],
+        ),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['requestWhenInUseAuthorization'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor([
+          'requestWhenInUseAuthorization',
+        ])['requestWhenInUseAuthorization'],
+        contains('${binary.path}#__DATA_CONST.__objc_const'),
+      );
+    },
+  );
 }
 
 List<int> thinMachO(List<List<int>> commands) {
@@ -369,6 +397,108 @@ List<int> thinMachOWithObjCClassRef(String className) {
   ];
 }
 
+List<int> thinMachOWithObjCMethodList({
+  required String className,
+  required List<String> methodNames,
+}) {
+  final classNameAddress = 0x100000100;
+  final methodNameAddress = 0x100000400;
+  final classAddress = 0x100000800;
+  final classRoAddress = 0x100001000;
+  final classListAddress = 0x100001800;
+  final classNameData = cStringBytes([className]);
+  final methodNameData = cStringBytes(methodNames);
+  final methodNameOffsets = stringOffsets(methodNames);
+  final methodListAddress = classRoAddress + 40;
+  final classData = objcClass64Bytes(classRoAddress);
+  final classRoData = objcClassRo64Bytes(
+    classNameAddress,
+    baseMethodsAddress: methodListAddress,
+  );
+  final methodListData = objcMethodList64Bytes([
+    for (final methodNameOffset in methodNameOffsets)
+      methodNameAddress + methodNameOffset,
+  ]);
+  final classListData = u64(classAddress);
+  final commandsSize = (72 + 2 * 80) + 3 * (72 + 80);
+  final classNameOffset = 32 + commandsSize;
+  final methodNameOffset = classNameOffset + classNameData.length;
+  final classOffset = methodNameOffset + methodNameData.length;
+  final classRoOffset = classOffset + classData.length;
+  final methodListOffset = classRoOffset + classRoData.length;
+  final classListOffset = methodListOffset + methodListData.length;
+
+  final textCommand = machoSegment64AddressCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: classNameAddress,
+      fileOffset: classNameOffset,
+      size: classNameData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: methodNameAddress,
+      fileOffset: methodNameOffset,
+      size: methodNameData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressCommand('__DATA', [
+    (
+      name: '__objc_data',
+      segmentName: '__DATA',
+      address: classAddress,
+      fileOffset: classOffset,
+      size: classData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: classRoAddress,
+      fileOffset: classRoOffset,
+      size: classRoData.length + methodListData.length,
+    ),
+  ]);
+  final listCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: '__objc_classlist',
+      segmentName: '__DATA_CONST',
+      address: classListAddress,
+      fileOffset: classListOffset,
+      size: classListData.length,
+    ),
+  ]);
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(4),
+    ...u32(
+      textCommand.length +
+          dataCommand.length +
+          constCommand.length +
+          listCommand.length,
+    ),
+    ...u32(0),
+    ...u32(0),
+    ...textCommand,
+    ...dataCommand,
+    ...constCommand,
+    ...listCommand,
+    ...classNameData,
+    ...methodNameData,
+    ...classData,
+    ...classRoData,
+    ...methodListData,
+    ...classListData,
+  ];
+}
+
 List<int> machoSegment64Command(
   String segmentName,
   List<({String name, String segmentName, int fileOffset, int size})> sections,
@@ -441,7 +571,7 @@ List<int> objcClass64Bytes(int dataAddress) {
   return [...u64(0), ...u64(0), ...u64(0), ...u64(0), ...u64(dataAddress)];
 }
 
-List<int> objcClassRo64Bytes(int nameAddress) {
+List<int> objcClassRo64Bytes(int nameAddress, {int baseMethodsAddress = 0}) {
   return [
     ...u32(0),
     ...u32(0),
@@ -449,6 +579,19 @@ List<int> objcClassRo64Bytes(int nameAddress) {
     ...u32(0),
     ...u64(0),
     ...u64(nameAddress),
+    ...u64(baseMethodsAddress),
+  ];
+}
+
+List<int> objcMethodList64Bytes(List<int> methodNameAddresses) {
+  return [
+    ...u32(24),
+    ...u32(methodNameAddresses.length),
+    for (final methodNameAddress in methodNameAddresses) ...[
+      ...u64(methodNameAddress),
+      ...u64(0),
+      ...u64(0),
+    ],
   ];
 }
 
