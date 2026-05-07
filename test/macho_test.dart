@@ -481,6 +481,55 @@ void main() {
       expect(report.objcMethods.single.className, 'NotificationDelegate');
     });
 
+    test('resolves Objective-C small method lists from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCSmallMethodList(
+          className: 'CompactDelegate',
+          methodNames: ['locationManager:didUpdateLocations:'],
+        ),
+      );
+
+      expect(
+        report.objcMethods.single.name,
+        'locationManager:didUpdateLocations:',
+      );
+      expect(report.objcMethods.single.className, 'CompactDelegate');
+      expect(
+        report.objcMethods.single.sourceSection,
+        '__DATA_CONST.__objc_const',
+      );
+    });
+
+    test(
+      'resolves Objective-C small method lists from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithObjCSmallMethodList(
+              className: 'CompactNotificationDelegate',
+              methodNames: [
+                'userNotificationCenter:willPresentNotification:withCompletionHandler:',
+              ],
+              paddingBeforeData: 4096,
+            ),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(
+          report.objcMethods.single.name,
+          'userNotificationCenter:willPresentNotification:withCompletionHandler:',
+        );
+        expect(
+          report.objcMethods.single.className,
+          'CompactNotificationDelegate',
+        );
+      },
+    );
+
     test('ignores non-Mach-O bytes', () {
       final report = const MachOParser().parse(latin1.encode('not a binary'));
 
@@ -797,6 +846,122 @@ List<int> thinMachOWithObjCMethodList({
   ];
 }
 
+List<int> thinMachOWithObjCSmallMethodList({
+  required String className,
+  required List<String> methodNames,
+  int paddingBeforeData = 0,
+}) {
+  final classNameAddress = 0x100000100;
+  final methodNameAddress = 0x100000400;
+  final classAddress = 0x100000800;
+  final classRoAddress = 0x100001000;
+  final selectorRefAddress = 0x100001500;
+  final classListAddress = 0x100001800;
+  final classNameData = cStringBytes([className]);
+  final methodNameData = cStringBytes(methodNames);
+  final methodNameOffsets = stringOffsets(methodNames);
+  final methodListAddress = classRoAddress + 40;
+  final classData = objcClass64Bytes(classRoAddress);
+  final classRoData = objcClassRo64Bytes(
+    classNameAddress,
+    baseMethodsAddress: methodListAddress,
+  );
+  final selectorRefData = [
+    for (final methodNameOffset in methodNameOffsets)
+      ...u64(methodNameAddress + methodNameOffset),
+  ];
+  final methodListData = objcSmallMethodList64Bytes(
+    methodListAddress: methodListAddress,
+    selectorRefAddresses: [
+      for (var i = 0; i < methodNames.length; i += 1)
+        selectorRefAddress + i * 8,
+    ],
+  );
+  final classListData = u64(classAddress);
+  final commandsSize = 2 * (72 + 2 * 80) + 2 * (72 + 80);
+  final classNameOffset = 32 + commandsSize + paddingBeforeData;
+  final methodNameOffset = classNameOffset + classNameData.length;
+  final classOffset = methodNameOffset + methodNameData.length;
+  final classRoOffset = classOffset + classData.length;
+  final methodListOffset = classRoOffset + classRoData.length;
+  final selectorRefOffset = methodListOffset + methodListData.length;
+  final classListOffset = selectorRefOffset + selectorRefData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: classNameAddress,
+      fileOffset: classNameOffset,
+      size: classNameData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: methodNameAddress,
+      fileOffset: methodNameOffset,
+      size: methodNameData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressRangeCommand('__DATA', [
+    (
+      name: '__objc_data',
+      segmentName: '__DATA',
+      address: classAddress,
+      fileOffset: classOffset,
+      size: classData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: classRoAddress,
+      fileOffset: classRoOffset,
+      size: classRoData.length + methodListData.length,
+    ),
+    (
+      name: '__objc_selrefs',
+      segmentName: '__DATA_CONST',
+      address: selectorRefAddress,
+      fileOffset: selectorRefOffset,
+      size: selectorRefData.length,
+    ),
+  ]);
+  final listCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_classlist',
+      segmentName: '__DATA_CONST',
+      address: classListAddress,
+      fileOffset: classListOffset,
+      size: classListData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 4,
+      sizeofcmds:
+          textCommand.length +
+          dataCommand.length +
+          constCommand.length +
+          listCommand.length,
+    ),
+    ...textCommand,
+    ...dataCommand,
+    ...constCommand,
+    ...listCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...classNameData,
+    ...methodNameData,
+    ...classData,
+    ...classRoData,
+    ...methodListData,
+    ...selectorRefData,
+    ...classListData,
+  ];
+}
+
 List<int> machOHeader64({
   required int ncmds,
   required int sizeofcmds,
@@ -928,6 +1093,21 @@ List<int> objcMethodList64Bytes(List<int> methodNameAddresses) {
       ...u64(methodNameAddress),
       ...u64(0), // types
       ...u64(0), // imp
+    ],
+  ];
+}
+
+List<int> objcSmallMethodList64Bytes({
+  required int methodListAddress,
+  required List<int> selectorRefAddresses,
+}) {
+  return [
+    ...u32(0x8000000c),
+    ...u32(selectorRefAddresses.length),
+    for (var i = 0; i < selectorRefAddresses.length; i += 1) ...[
+      ...u32(selectorRefAddresses[i] - (methodListAddress + 8 + i * 12)),
+      ...u32(0),
+      ...u32(0),
     ],
   ];
 }

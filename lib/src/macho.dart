@@ -948,6 +948,20 @@ class _ObjCClassMetadata {
   final int baseMethodsAddress;
 }
 
+class _ObjCMethodListLayout {
+  const _ObjCMethodListLayout({
+    required this.entrySize,
+    required this.methodCount,
+    required this.isSmall,
+    required this.hasDirectSelector,
+  });
+
+  final int entrySize;
+  final int methodCount;
+  final bool isSmall;
+  final bool hasDirectSelector;
+}
+
 _MachOHeader? _readHeader(List<int> bytes) {
   if (bytes.length < 28) return null;
 
@@ -1580,6 +1594,12 @@ List<MachOObjCMethod> _readObjCMethodListFromFile(
     8,
   );
   if (header == null) return const [];
+  final layout = _objcMethodListLayout(
+    _readU32(header, 0),
+    _readU32(header, 4),
+    is64Bit: is64Bit,
+  );
+  if (layout == null) return const [];
 
   return _readObjCMethodListEntriesFromFile(
     raf,
@@ -1591,8 +1611,7 @@ List<MachOObjCMethod> _readObjCMethodListFromFile(
     className: className,
     sourceSection: section.displayName,
     methodListAddress: methodListAddress,
-    entrySize: _methodListEntrySize(_readU32(header, 0), is64Bit: is64Bit),
-    methodCount: _readU32(header, 4),
+    layout: layout,
   );
 }
 
@@ -1616,6 +1635,12 @@ List<MachOObjCMethod> _readObjCMethodListFromBytes(
     8,
   );
   if (header == null) return const [];
+  final layout = _objcMethodListLayout(
+    _readU32(header, 0),
+    _readU32(header, 4),
+    is64Bit: is64Bit,
+  );
+  if (layout == null) return const [];
 
   return _readObjCMethodListEntriesFromBytes(
     bytes,
@@ -1625,8 +1650,7 @@ List<MachOObjCMethod> _readObjCMethodListFromBytes(
     className: className,
     sourceSection: section.displayName,
     methodListAddress: methodListAddress,
-    entrySize: _methodListEntrySize(_readU32(header, 0), is64Bit: is64Bit),
-    methodCount: _readU32(header, 4),
+    layout: layout,
   );
 }
 
@@ -1640,24 +1664,30 @@ List<MachOObjCMethod> _readObjCMethodListEntriesFromFile(
   required String className,
   required String sourceSection,
   required int methodListAddress,
-  required int entrySize,
-  required int methodCount,
+  required _ObjCMethodListLayout layout,
 }) {
   final methods = <MachOObjCMethod>[];
-  if (!_canReadMethodList(entrySize, methodCount, is64Bit: is64Bit)) {
-    return methods;
-  }
 
-  for (var i = 0; i < methodCount; i += 1) {
-    final entryAddress = methodListAddress + 8 + i * entrySize;
-    final nameAddress = _readPointerAtAddressFromFile(
-      raf,
-      fileOffset,
-      availableLength,
-      allSections,
-      entryAddress,
-      is64Bit: is64Bit,
-    );
+  for (var i = 0; i < layout.methodCount; i += 1) {
+    final entryAddress = methodListAddress + 8 + i * layout.entrySize;
+    final nameAddress = layout.isSmall
+        ? _readSmallObjCMethodNameAddressFromFile(
+            raf,
+            fileOffset,
+            availableLength,
+            allSections,
+            entryAddress,
+            hasDirectSelector: layout.hasDirectSelector,
+            is64Bit: is64Bit,
+          )
+        : _readPointerAtAddressFromFile(
+            raf,
+            fileOffset,
+            availableLength,
+            allSections,
+            entryAddress,
+            is64Bit: is64Bit,
+          );
     if (nameAddress == null) continue;
 
     final name = _readCStringAtAddressFromFile(
@@ -1690,22 +1720,26 @@ List<MachOObjCMethod> _readObjCMethodListEntriesFromBytes(
   required String className,
   required String sourceSection,
   required int methodListAddress,
-  required int entrySize,
-  required int methodCount,
+  required _ObjCMethodListLayout layout,
 }) {
   final methods = <MachOObjCMethod>[];
-  if (!_canReadMethodList(entrySize, methodCount, is64Bit: is64Bit)) {
-    return methods;
-  }
 
-  for (var i = 0; i < methodCount; i += 1) {
-    final entryAddress = methodListAddress + 8 + i * entrySize;
-    final nameAddress = _readPointerAtAddressFromBytes(
-      bytes,
-      allSections,
-      entryAddress,
-      is64Bit: is64Bit,
-    );
+  for (var i = 0; i < layout.methodCount; i += 1) {
+    final entryAddress = methodListAddress + 8 + i * layout.entrySize;
+    final nameAddress = layout.isSmall
+        ? _readSmallObjCMethodNameAddressFromBytes(
+            bytes,
+            allSections,
+            entryAddress,
+            hasDirectSelector: layout.hasDirectSelector,
+            is64Bit: is64Bit,
+          )
+        : _readPointerAtAddressFromBytes(
+            bytes,
+            allSections,
+            entryAddress,
+            is64Bit: is64Bit,
+          );
     if (nameAddress == null) continue;
 
     final name = _readCStringAtAddressFromBytes(
@@ -1726,6 +1760,64 @@ List<MachOObjCMethod> _readObjCMethodListEntriesFromBytes(
   }
 
   return methods;
+}
+
+int? _readSmallObjCMethodNameAddressFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength,
+  List<MachOSection> allSections,
+  int entryAddress, {
+  required bool hasDirectSelector,
+  required bool is64Bit,
+}) {
+  final entry = _readBytesAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    entryAddress,
+    12,
+  );
+  if (entry == null) return null;
+
+  final nameReferenceAddress = entryAddress + _readI32(entry, 0);
+  if (hasDirectSelector) return nameReferenceAddress;
+
+  return _readPointerAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    nameReferenceAddress,
+    is64Bit: is64Bit,
+  );
+}
+
+int? _readSmallObjCMethodNameAddressFromBytes(
+  List<int> bytes,
+  List<MachOSection> allSections,
+  int entryAddress, {
+  required bool hasDirectSelector,
+  required bool is64Bit,
+}) {
+  final entry = _readBytesAtAddressFromBytes(
+    bytes,
+    allSections,
+    entryAddress,
+    12,
+  );
+  if (entry == null) return null;
+
+  final nameReferenceAddress = entryAddress + _readI32(entry, 0);
+  if (hasDirectSelector) return nameReferenceAddress;
+
+  return _readPointerAtAddressFromBytes(
+    bytes,
+    allSections,
+    nameReferenceAddress,
+    is64Bit: is64Bit,
+  );
 }
 
 Iterable<MachOSection> _stringSections(List<MachOSegment> segments) sync* {
@@ -1943,9 +2035,43 @@ List<int>? _readBytesAtAddressFromBytes(
   return bytes.sublist(dataOffset, dataOffset + length);
 }
 
-int _methodListEntrySize(int entsizeAndFlags, {required bool is64Bit}) {
-  final entrySize = entsizeAndFlags & 0x00ffffff;
-  final minimumEntrySize = is64Bit ? 24 : 12;
+_ObjCMethodListLayout? _objcMethodListLayout(
+  int entsizeAndFlags,
+  int methodCount, {
+  required bool is64Bit,
+}) {
+  final isSmall = (entsizeAndFlags & _objcSmallMethodListFlag) != 0;
+  final hasDirectSelector =
+      (entsizeAndFlags & _objcDirectSelectorMethodListFlag) != 0;
+  final entrySize = _methodListEntrySize(
+    entsizeAndFlags,
+    is64Bit: is64Bit,
+    isSmall: isSmall,
+  );
+  if (!_canReadMethodList(
+    entrySize,
+    methodCount,
+    is64Bit: is64Bit,
+    isSmall: isSmall,
+  )) {
+    return null;
+  }
+
+  return _ObjCMethodListLayout(
+    entrySize: entrySize,
+    methodCount: methodCount,
+    isSmall: isSmall,
+    hasDirectSelector: hasDirectSelector,
+  );
+}
+
+int _methodListEntrySize(
+  int entsizeAndFlags, {
+  required bool is64Bit,
+  required bool isSmall,
+}) {
+  final entrySize = entsizeAndFlags & 0xfffc;
+  final minimumEntrySize = isSmall ? 12 : (is64Bit ? 24 : 12);
   return entrySize < minimumEntrySize ? minimumEntrySize : entrySize;
 }
 
@@ -1953,8 +2079,9 @@ bool _canReadMethodList(
   int entrySize,
   int methodCount, {
   required bool is64Bit,
+  required bool isSmall,
 }) {
-  final minimumEntrySize = is64Bit ? 24 : 12;
+  final minimumEntrySize = isSmall ? 12 : (is64Bit ? 24 : 12);
   if (entrySize < minimumEntrySize ||
       methodCount <= 0 ||
       methodCount > _maxObjCMethodCount) {
@@ -2135,6 +2262,11 @@ int _readU32(List<int> bytes, int offset) {
       (bytes[offset + 3] << 24);
 }
 
+int _readI32(List<int> bytes, int offset) {
+  final value = _readU32(bytes, offset);
+  return (value & 0x80000000) == 0 ? value : value - 0x100000000;
+}
+
 int _readU64(List<int> bytes, int offset) {
   if (offset + 8 > bytes.length) return 0;
   return bytes[offset] |
@@ -2202,6 +2334,8 @@ const _fatMagic = 0xcafebabe;
 const _fatMagic64 = 0xcafebabf;
 const _maxFatArchTableBytes = 64 * 1024;
 const _maxLoadCommandBytes = 8 * 1024 * 1024;
+const _objcDirectSelectorMethodListFlag = 0x40000000;
+const _objcSmallMethodListFlag = 0x80000000;
 const _maxObjCMethodCount = 8192;
 const _maxObjCMethodListBytes = 2 * 1024 * 1024;
 const _maxSectionStringBytes = 4 * 1024 * 1024;
