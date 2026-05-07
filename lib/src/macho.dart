@@ -948,6 +948,18 @@ class _ObjCClassMetadata {
   final int baseMethodsAddress;
 }
 
+class _ObjCCategoryMetadata {
+  const _ObjCCategoryMetadata({
+    required this.ownerName,
+    required this.instanceMethodsAddress,
+    required this.classMethodsAddress,
+  });
+
+  final String ownerName;
+  final int instanceMethodsAddress;
+  final int classMethodsAddress;
+}
+
 class _ObjCMethodListLayout {
   const _ObjCMethodListLayout({
     required this.entrySize,
@@ -1266,6 +1278,47 @@ List<MachOObjCMethod> _readObjCMethodsFromFile(
     }
   }
 
+  for (final section in _objcCategoryListSections(segments)) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    final sectionBytes = _readRange(
+      raf,
+      fileOffset + section.fileOffset,
+      section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final categoryAddress = is64Bit
+          ? _readU64(sectionBytes, offset)
+          : _readU32(sectionBytes, offset);
+      final metadata = _readObjCCategoryMetadataFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        categoryAddress: categoryAddress,
+      );
+      if (metadata == null) continue;
+
+      methods.addAll(
+        _readObjCCategoryMethodListsFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          metadata: metadata,
+        ),
+      );
+    }
+  }
+
   return methods;
 }
 
@@ -1331,6 +1384,42 @@ List<MachOObjCMethod> _readObjCMethodsFromBytes(
           stringSections: stringSections,
           className: metadata.name,
           methodListAddress: metadata.baseMethodsAddress,
+        ),
+      );
+    }
+  }
+
+  for (final section in _objcCategoryListSections(segments)) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    final sectionBytes = bytes.sublist(
+      section.fileOffset,
+      section.fileOffset + section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final categoryAddress = is64Bit
+          ? _readU64(sectionBytes, offset)
+          : _readU32(sectionBytes, offset);
+      final metadata = _readObjCCategoryMetadataFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        categoryAddress: categoryAddress,
+      );
+      if (metadata == null) continue;
+
+      methods.addAll(
+        _readObjCCategoryMethodListsFromBytes(
+          bytes,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          metadata: metadata,
         ),
       );
     }
@@ -1568,6 +1657,194 @@ _ObjCClassMetadata? _readObjCClassMetadataFromBytes(
     classRoAddress: classRoAddress,
     baseMethodsAddress: baseMethodsAddress,
   );
+}
+
+_ObjCCategoryMetadata? _readObjCCategoryMetadataFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int categoryAddress,
+}) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final nameAddress = _readPointerAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    categoryAddress,
+    is64Bit: is64Bit,
+  );
+  final classAddress = _readPointerAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    categoryAddress + pointerSize,
+    is64Bit: is64Bit,
+  );
+  if (nameAddress == null || classAddress == null) return null;
+
+  final categoryName = _readCStringAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    stringSections,
+    nameAddress,
+  );
+  final className = _readObjCClassNameFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    is64Bit: is64Bit,
+    allSections: allSections,
+    stringSections: stringSections,
+    classAddress: classAddress,
+  );
+  final ownerName = className ?? categoryName;
+  if (ownerName == null) return null;
+
+  return _ObjCCategoryMetadata(
+    ownerName: ownerName,
+    instanceMethodsAddress:
+        _readPointerAtAddressFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          allSections,
+          categoryAddress + 2 * pointerSize,
+          is64Bit: is64Bit,
+        ) ??
+        0,
+    classMethodsAddress:
+        _readPointerAtAddressFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          allSections,
+          categoryAddress + 3 * pointerSize,
+          is64Bit: is64Bit,
+        ) ??
+        0,
+  );
+}
+
+_ObjCCategoryMetadata? _readObjCCategoryMetadataFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int categoryAddress,
+}) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final nameAddress = _readPointerAtAddressFromBytes(
+    bytes,
+    allSections,
+    categoryAddress,
+    is64Bit: is64Bit,
+  );
+  final classAddress = _readPointerAtAddressFromBytes(
+    bytes,
+    allSections,
+    categoryAddress + pointerSize,
+    is64Bit: is64Bit,
+  );
+  if (nameAddress == null || classAddress == null) return null;
+
+  final categoryName = _readCStringAtAddressFromBytes(
+    bytes,
+    stringSections,
+    nameAddress,
+  );
+  final className = _readObjCClassNameFromBytes(
+    bytes,
+    is64Bit: is64Bit,
+    allSections: allSections,
+    stringSections: stringSections,
+    classAddress: classAddress,
+  );
+  final ownerName = className ?? categoryName;
+  if (ownerName == null) return null;
+
+  return _ObjCCategoryMetadata(
+    ownerName: ownerName,
+    instanceMethodsAddress:
+        _readPointerAtAddressFromBytes(
+          bytes,
+          allSections,
+          categoryAddress + 2 * pointerSize,
+          is64Bit: is64Bit,
+        ) ??
+        0,
+    classMethodsAddress:
+        _readPointerAtAddressFromBytes(
+          bytes,
+          allSections,
+          categoryAddress + 3 * pointerSize,
+          is64Bit: is64Bit,
+        ) ??
+        0,
+  );
+}
+
+List<MachOObjCMethod> _readObjCCategoryMethodListsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required _ObjCCategoryMetadata metadata,
+}) {
+  final methods = <MachOObjCMethod>[];
+  for (final methodListAddress in [
+    metadata.instanceMethodsAddress,
+    metadata.classMethodsAddress,
+  ]) {
+    if (methodListAddress == 0) continue;
+    methods.addAll(
+      _readObjCMethodListsFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        className: metadata.ownerName,
+        methodListAddress: methodListAddress,
+      ),
+    );
+  }
+  return methods;
+}
+
+List<MachOObjCMethod> _readObjCCategoryMethodListsFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required _ObjCCategoryMetadata metadata,
+}) {
+  final methods = <MachOObjCMethod>[];
+  for (final methodListAddress in [
+    metadata.instanceMethodsAddress,
+    metadata.classMethodsAddress,
+  ]) {
+    if (methodListAddress == 0) continue;
+    methods.addAll(
+      _readObjCMethodListsFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        className: metadata.ownerName,
+        methodListAddress: methodListAddress,
+      ),
+    );
+  }
+  return methods;
 }
 
 List<MachOObjCMethod> _readObjCMethodListsFromFile(
@@ -2018,6 +2295,17 @@ Iterable<MachOSection> _objcClassReferenceSections(
   for (final section in _allSections(segments)) {
     if (section.name == '__objc_classrefs' ||
         section.name == '__objc_classlist') {
+      yield section;
+    }
+  }
+}
+
+Iterable<MachOSection> _objcCategoryListSections(
+  List<MachOSegment> segments,
+) sync* {
+  for (final section in _allSections(segments)) {
+    if (section.name == '__objc_catlist' ||
+        section.name == '__objc_nlcatlist') {
       yield section;
     }
   }

@@ -574,6 +574,62 @@ void main() {
       },
     );
 
+    test('resolves Objective-C category method lists from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCCategoryMethodList(
+          className: 'RunnerViewController',
+          categoryName: 'Location',
+          instanceMethodNames: ['requestWhenInUseAuthorization'],
+          classMethodNames: ['sharedLocationController'],
+        ),
+      );
+
+      expect(
+        report.objcMethods.map((method) => method.name),
+        containsAll([
+          'requestWhenInUseAuthorization',
+          'sharedLocationController',
+        ]),
+      );
+      expect(
+        report.objcMethods.map((method) => method.className),
+        everyElement('RunnerViewController'),
+      );
+      expect(
+        report.objcMethods.map((method) => method.sourceSection),
+        everyElement('__DATA_CONST.__objc_const'),
+      );
+    });
+
+    test(
+      'resolves Objective-C category method lists from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithObjCCategoryMethodList(
+              className: 'NotificationDelegate',
+              categoryName: 'Authorization',
+              instanceMethodNames: [
+                'userNotificationCenter:openSettingsForNotification:',
+              ],
+              classMethodNames: const [],
+              paddingBeforeData: 4096,
+            ),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(
+          report.objcMethods.single.name,
+          'userNotificationCenter:openSettingsForNotification:',
+        );
+        expect(report.objcMethods.single.className, 'NotificationDelegate');
+      },
+    );
+
     test('ignores non-Mach-O bytes', () {
       final report = const MachOParser().parse(latin1.encode('not a binary'));
 
@@ -1024,6 +1080,131 @@ List<int> thinMachOWithObjCSmallMethodList({
   ];
 }
 
+List<int> thinMachOWithObjCCategoryMethodList({
+  required String className,
+  required String categoryName,
+  required List<String> instanceMethodNames,
+  required List<String> classMethodNames,
+  int paddingBeforeData = 0,
+}) {
+  final classNameAddress = 0x100000100;
+  final methodNameAddress = 0x100000500;
+  final classAddress = 0x100000800;
+  final classRoAddress = 0x100001000;
+  final catlistAddress = 0x100001800;
+  final namesData = cStringBytes([className, categoryName]);
+  final nameOffsets = stringOffsets([className, categoryName]);
+  final methodNames = [...instanceMethodNames, ...classMethodNames];
+  final methodNameData = cStringBytes(methodNames);
+  final methodNameOffsets = stringOffsets(methodNames);
+  final categoryNameAddress = classNameAddress + nameOffsets[1];
+  final categoryAddress = classRoAddress + 40;
+  final instanceMethodListAddress = categoryAddress + 48;
+  final instanceMethodListData = objcMethodList64Bytes([
+    for (var i = 0; i < instanceMethodNames.length; i += 1)
+      methodNameAddress + methodNameOffsets[i],
+  ]);
+  final classMethodListAddress =
+      instanceMethodListAddress + instanceMethodListData.length;
+  final classMethodListData = objcMethodList64Bytes([
+    for (var i = 0; i < classMethodNames.length; i += 1)
+      methodNameAddress + methodNameOffsets[instanceMethodNames.length + i],
+  ]);
+  final classData = objcClass64Bytes(classRoAddress);
+  final classRoData = objcClassRo64Bytes(classNameAddress);
+  final categoryData = objcCategory64Bytes(
+    nameAddress: categoryNameAddress,
+    classAddress: classAddress,
+    instanceMethodsAddress: instanceMethodNames.isEmpty
+        ? 0
+        : instanceMethodListAddress,
+    classMethodsAddress: classMethodNames.isEmpty ? 0 : classMethodListAddress,
+  );
+  final catlistData = u64(categoryAddress);
+  final commandsSize = (72 + 2 * 80) + 3 * (72 + 80);
+  final classNameOffset = 32 + commandsSize + paddingBeforeData;
+  final methodNameOffset = classNameOffset + namesData.length;
+  final classOffset = methodNameOffset + methodNameData.length;
+  final classRoOffset = classOffset + classData.length;
+  final categoryOffset = classRoOffset + classRoData.length;
+  final instanceMethodListOffset = categoryOffset + categoryData.length;
+  final classMethodListOffset =
+      instanceMethodListOffset + instanceMethodListData.length;
+  final catlistOffset = classMethodListOffset + classMethodListData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: classNameAddress,
+      fileOffset: classNameOffset,
+      size: namesData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: methodNameAddress,
+      fileOffset: methodNameOffset,
+      size: methodNameData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressRangeCommand('__DATA', [
+    (
+      name: '__objc_data',
+      segmentName: '__DATA',
+      address: classAddress,
+      fileOffset: classOffset,
+      size: classData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: classRoAddress,
+      fileOffset: classRoOffset,
+      size:
+          classRoData.length +
+          categoryData.length +
+          instanceMethodListData.length +
+          classMethodListData.length,
+    ),
+  ]);
+  final catlistCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_catlist',
+      segmentName: '__DATA_CONST',
+      address: catlistAddress,
+      fileOffset: catlistOffset,
+      size: catlistData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 4,
+      sizeofcmds:
+          textCommand.length +
+          dataCommand.length +
+          constCommand.length +
+          catlistCommand.length,
+    ),
+    ...textCommand,
+    ...dataCommand,
+    ...constCommand,
+    ...catlistCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...namesData,
+    ...methodNameData,
+    ...classData,
+    ...classRoData,
+    ...categoryData,
+    ...instanceMethodListData,
+    ...classMethodListData,
+    ...catlistData,
+  ];
+}
+
 List<int> machOHeader64({
   required int ncmds,
   required int sizeofcmds,
@@ -1144,6 +1325,22 @@ List<int> objcClassRo64Bytes(int nameAddress, {int baseMethodsAddress = 0}) {
     ...u64(0), // ivarLayout
     ...u64(nameAddress), // name
     ...u64(baseMethodsAddress),
+  ];
+}
+
+List<int> objcCategory64Bytes({
+  required int nameAddress,
+  required int classAddress,
+  required int instanceMethodsAddress,
+  required int classMethodsAddress,
+}) {
+  return [
+    ...u64(nameAddress),
+    ...u64(classAddress),
+    ...u64(instanceMethodsAddress),
+    ...u64(classMethodsAddress),
+    ...u64(0),
+    ...u64(0),
   ];
 }
 

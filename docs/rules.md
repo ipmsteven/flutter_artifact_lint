@@ -152,6 +152,8 @@ Objective-C big and small method lists are resolved from
 `class_ro_t.baseMethods` and local relative method-list lists through
 `method_list_t` entries back to `__objc_methname` strings when the relevant
 Objective-C metadata sections are present.
+Objective-C category instance and class method lists are resolved from
+`__objc_catlist` and `__objc_nlcatlist` through `category_t` metadata.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or
