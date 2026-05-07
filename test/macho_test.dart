@@ -759,6 +759,26 @@ void main() {
       );
     });
 
+    test('resolves Objective-C inherited protocol references from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCProtocolInheritance(
+          protocolName: 'FlutterPlugin',
+          inheritedProtocolName: 'UIApplicationDelegate',
+        ),
+      );
+
+      expect(
+        report.objcProtocols.map((protocol) => protocol.name),
+        containsAll(['FlutterPlugin', 'UIApplicationDelegate']),
+      );
+      expect(
+        report.objcProtocols
+            .singleWhere((protocol) => protocol.name == 'UIApplicationDelegate')
+            .sourceSection,
+        '__DATA_CONST.__objc_const',
+      );
+    });
+
     test(
       'resolves Objective-C protocol references from the file-backed parser',
       () async {
@@ -843,6 +863,25 @@ void main() {
       expect(
         report.objcMethods.map((method) => method.sourceSection),
         everyElement('__DATA_CONST.__objc_const'),
+      );
+    });
+
+    test('resolves inherited Objective-C protocol method lists from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCInheritedProtocolMethodList(
+          protocolName: 'FlutterPlugin',
+          inheritedProtocolName: 'UIApplicationDelegate',
+          inheritedMethodNames: ['application:didFinishLaunchingWithOptions:'],
+        ),
+      );
+
+      expect(report.objcMethods.map((method) => method.name), [
+        'application:didFinishLaunchingWithOptions:',
+      ]);
+      expect(report.objcMethods.single.className, 'UIApplicationDelegate');
+      expect(
+        report.objcMethods.single.sourceSection,
+        '__DATA_CONST.__objc_const',
       );
     });
 
@@ -1139,6 +1178,31 @@ void main() {
         '__DATA_CONST.__objc_const',
       );
     });
+
+    test(
+      'resolves inherited Objective-C protocol property lists from bytes',
+      () {
+        final report = const MachOParser().parse(
+          thinMachOWithObjCInheritedProtocolPropertyList(
+            protocolName: 'FlutterPlugin',
+            inheritedProtocolName: 'UIApplicationDelegate',
+            inheritedProperties: [
+              (name: 'window', attributes: r'T@"UIWindow",R'),
+            ],
+          ),
+        );
+
+        expect(report.objcProperties.map((property) => property.name), [
+          'window',
+        ]);
+        expect(report.objcProperties.single.attributes, r'T@"UIWindow",R');
+        expect(report.objcProperties.single.className, 'UIApplicationDelegate');
+        expect(
+          report.objcProperties.single.sourceSection,
+          '__DATA_CONST.__objc_const',
+        );
+      },
+    );
 
     test('resolves Objective-C protocol class property lists from bytes', () {
       final report = const MachOParser().parse(
@@ -1886,6 +1950,77 @@ List<int> thinMachOWithObjCProtocolRefs(
   ];
 }
 
+List<int> thinMachOWithObjCProtocolInheritance({
+  required String protocolName,
+  required String inheritedProtocolName,
+  int paddingBeforeData = 0,
+}) {
+  final protocolNameAddress = 0x100000100;
+  final protocolAddress = 0x100001000;
+  final inheritedProtocolAddress = protocolAddress + 64;
+  final inheritedProtocolListAddress = inheritedProtocolAddress + 64;
+  final topLevelProtocolListAddress = 0x100002000;
+  final namesData = cStringBytes([protocolName, inheritedProtocolName]);
+  final nameOffsets = stringOffsets([protocolName, inheritedProtocolName]);
+  final protocolData = [
+    ...objcProtocol64Bytes(
+      protocolNameAddress + nameOffsets[0],
+      protocolsAddress: inheritedProtocolListAddress,
+    ),
+    ...objcProtocol64Bytes(protocolNameAddress + nameOffsets[1]),
+    ...objcProtocolList64Bytes([inheritedProtocolAddress]),
+  ];
+  final topLevelProtocolListData = u64(protocolAddress);
+  final commandsSize = 3 * (72 + 80);
+  final nameOffset = 32 + commandsSize + paddingBeforeData;
+  final protocolOffset = nameOffset + namesData.length;
+  final topLevelProtocolListOffset = protocolOffset + protocolData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: protocolNameAddress,
+      fileOffset: nameOffset,
+      size: namesData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: protocolAddress,
+      fileOffset: protocolOffset,
+      size: protocolData.length,
+    ),
+  ]);
+  final protocolListCommand =
+      machoSegment64AddressRangeCommand('__DATA_CONST', [
+        (
+          name: '__objc_protolist',
+          segmentName: '__DATA_CONST',
+          address: topLevelProtocolListAddress,
+          fileOffset: topLevelProtocolListOffset,
+          size: topLevelProtocolListData.length,
+        ),
+      ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 3,
+      sizeofcmds:
+          textCommand.length + constCommand.length + protocolListCommand.length,
+    ),
+    ...textCommand,
+    ...constCommand,
+    ...protocolListCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...namesData,
+    ...protocolData,
+    ...topLevelProtocolListData,
+  ];
+}
+
 List<int> thinMachOWithObjCClassProtocolList({
   required String className,
   required List<String> protocolNames,
@@ -2073,6 +2208,106 @@ List<int> thinMachOWithObjCProtocolMethodList({
     ...protocolData,
     ...methodListData,
     ...protocolListData,
+  ];
+}
+
+List<int> thinMachOWithObjCInheritedProtocolMethodList({
+  required String protocolName,
+  required String inheritedProtocolName,
+  required List<String> inheritedMethodNames,
+  int paddingBeforeData = 0,
+}) {
+  final protocolNameAddress = 0x100000100;
+  final methodNameAddress = 0x100000500;
+  final protocolAddress = 0x100001000;
+  final inheritedProtocolAddress = protocolAddress + 64;
+  final inheritedProtocolListAddress = inheritedProtocolAddress + 64;
+  final topLevelProtocolListAddress = 0x100002000;
+  final protocolNamesData = cStringBytes([protocolName, inheritedProtocolName]);
+  final protocolNameOffsets = stringOffsets([
+    protocolName,
+    inheritedProtocolName,
+  ]);
+  final methodNameData = cStringBytes(inheritedMethodNames);
+  final methodNameOffsets = stringOffsets(inheritedMethodNames);
+  final inheritedProtocolListData = objcProtocolList64Bytes([
+    inheritedProtocolAddress,
+  ]);
+  final methodListAddress =
+      inheritedProtocolListAddress + inheritedProtocolListData.length;
+  final methodListData = objcMethodList64Bytes([
+    for (final methodNameOffset in methodNameOffsets)
+      methodNameAddress + methodNameOffset,
+  ]);
+  final protocolData = [
+    ...objcProtocol64Bytes(
+      protocolNameAddress + protocolNameOffsets[0],
+      protocolsAddress: inheritedProtocolListAddress,
+    ),
+    ...objcProtocol64Bytes(
+      protocolNameAddress + protocolNameOffsets[1],
+      instanceMethodsAddress: methodListAddress,
+    ),
+    ...inheritedProtocolListData,
+    ...methodListData,
+  ];
+  final topLevelProtocolListData = u64(protocolAddress);
+  final commandsSize = (72 + 2 * 80) + 2 * (72 + 80);
+  final protocolNameOffset = 32 + commandsSize + paddingBeforeData;
+  final methodNameOffset = protocolNameOffset + protocolNamesData.length;
+  final protocolOffset = methodNameOffset + methodNameData.length;
+  final topLevelProtocolListOffset = protocolOffset + protocolData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: protocolNameAddress,
+      fileOffset: protocolNameOffset,
+      size: protocolNamesData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: methodNameAddress,
+      fileOffset: methodNameOffset,
+      size: methodNameData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: protocolAddress,
+      fileOffset: protocolOffset,
+      size: protocolData.length,
+    ),
+  ]);
+  final protocolListCommand =
+      machoSegment64AddressRangeCommand('__DATA_CONST', [
+        (
+          name: '__objc_protolist',
+          segmentName: '__DATA_CONST',
+          address: topLevelProtocolListAddress,
+          fileOffset: topLevelProtocolListOffset,
+          size: topLevelProtocolListData.length,
+        ),
+      ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 3,
+      sizeofcmds:
+          textCommand.length + constCommand.length + protocolListCommand.length,
+    ),
+    ...textCommand,
+    ...constCommand,
+    ...protocolListCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...protocolNamesData,
+    ...methodNameData,
+    ...protocolData,
+    ...topLevelProtocolListData,
   ];
 }
 
@@ -2697,6 +2932,131 @@ List<int> thinMachOWithObjCProtocolPropertyList({
     ...protocolData,
     ...propertyListData,
     ...protocolListData,
+  ];
+}
+
+List<int> thinMachOWithObjCInheritedProtocolPropertyList({
+  required String protocolName,
+  required String inheritedProtocolName,
+  required List<({String name, String attributes})> inheritedProperties,
+  int paddingBeforeData = 0,
+}) {
+  final protocolNameAddress = 0x100000100;
+  final propertyNameAddress = 0x100000500;
+  final propertyAttributesAddress = 0x100000900;
+  final protocolAddress = 0x100001000;
+  final inheritedProtocolAddress = protocolAddress + 64;
+  final inheritedProtocolListAddress = inheritedProtocolAddress + 64;
+  final topLevelProtocolListAddress = 0x100002000;
+  final protocolNamesData = cStringBytes([protocolName, inheritedProtocolName]);
+  final protocolNameOffsets = stringOffsets([
+    protocolName,
+    inheritedProtocolName,
+  ]);
+  final propertyNameData = cStringBytes([
+    for (final property in inheritedProperties) property.name,
+  ]);
+  final propertyNameOffsets = stringOffsets([
+    for (final property in inheritedProperties) property.name,
+  ]);
+  final propertyAttributesData = cStringBytes([
+    for (final property in inheritedProperties) property.attributes,
+  ]);
+  final propertyAttributesOffsets = stringOffsets([
+    for (final property in inheritedProperties) property.attributes,
+  ]);
+  final inheritedProtocolListData = objcProtocolList64Bytes([
+    inheritedProtocolAddress,
+  ]);
+  final propertyListAddress =
+      inheritedProtocolListAddress + inheritedProtocolListData.length;
+  final propertyListData = objcPropertyList64Bytes([
+    for (var i = 0; i < inheritedProperties.length; i += 1)
+      (
+        nameAddress: propertyNameAddress + propertyNameOffsets[i],
+        attributesAddress:
+            propertyAttributesAddress + propertyAttributesOffsets[i],
+      ),
+  ]);
+  final protocolData = [
+    ...objcProtocol64Bytes(
+      protocolNameAddress + protocolNameOffsets[0],
+      protocolsAddress: inheritedProtocolListAddress,
+    ),
+    ...objcProtocol64Bytes(
+      protocolNameAddress + protocolNameOffsets[1],
+      instancePropertiesAddress: propertyListAddress,
+    ),
+    ...inheritedProtocolListData,
+    ...propertyListData,
+  ];
+  final topLevelProtocolListData = u64(protocolAddress);
+  final commandsSize = (72 + 3 * 80) + 2 * (72 + 80);
+  final protocolNameOffset = 32 + commandsSize + paddingBeforeData;
+  final propertyNameOffset = protocolNameOffset + protocolNamesData.length;
+  final propertyAttributesOffset = propertyNameOffset + propertyNameData.length;
+  final protocolOffset =
+      propertyAttributesOffset + propertyAttributesData.length;
+  final topLevelProtocolListOffset = protocolOffset + protocolData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: protocolNameAddress,
+      fileOffset: protocolNameOffset,
+      size: protocolNamesData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: propertyNameAddress,
+      fileOffset: propertyNameOffset,
+      size: propertyNameData.length,
+    ),
+    (
+      name: '__objc_methtype',
+      segmentName: '__TEXT',
+      address: propertyAttributesAddress,
+      fileOffset: propertyAttributesOffset,
+      size: propertyAttributesData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: protocolAddress,
+      fileOffset: protocolOffset,
+      size: protocolData.length,
+    ),
+  ]);
+  final protocolListCommand =
+      machoSegment64AddressRangeCommand('__DATA_CONST', [
+        (
+          name: '__objc_protolist',
+          segmentName: '__DATA_CONST',
+          address: topLevelProtocolListAddress,
+          fileOffset: topLevelProtocolListOffset,
+          size: topLevelProtocolListData.length,
+        ),
+      ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 3,
+      sizeofcmds:
+          textCommand.length + constCommand.length + protocolListCommand.length,
+    ),
+    ...textCommand,
+    ...constCommand,
+    ...protocolListCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...protocolNamesData,
+    ...propertyNameData,
+    ...propertyAttributesData,
+    ...protocolData,
+    ...topLevelProtocolListData,
   ];
 }
 
@@ -3641,6 +4001,7 @@ List<int> objcCategory64Bytes({
 
 List<int> objcProtocol64Bytes(
   int nameAddress, {
+  int protocolsAddress = 0,
   int instanceMethodsAddress = 0,
   int classMethodsAddress = 0,
   int optionalInstanceMethodsAddress = 0,
@@ -3651,7 +4012,7 @@ List<int> objcProtocol64Bytes(
   final bytes = [
     ...u64(0), // isa
     ...u64(nameAddress),
-    ...u64(0), // protocols
+    ...u64(protocolsAddress),
     ...u64(instanceMethodsAddress),
     ...u64(classMethodsAddress),
     ...u64(optionalInstanceMethodsAddress),

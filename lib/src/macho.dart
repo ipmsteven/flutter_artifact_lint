@@ -2040,6 +2040,18 @@ List<MachOObjCProtocol> _readObjCProtocolsFromFile(
           protocolAddress: protocolAddress,
         ),
       );
+      protocols.addAll(
+        _readObjCInheritedProtocolsFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          protocolAddress: protocolAddress,
+          visitedProtocolAddresses: {protocolAddress},
+        ),
+      );
     }
   }
 
@@ -3329,6 +3341,16 @@ List<MachOObjCProtocol> _readObjCProtocolsFromBytes(
           protocolAddress: protocolAddress,
         ),
       );
+      protocols.addAll(
+        _readObjCInheritedProtocolsFromBytes(
+          bytes,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          protocolAddress: protocolAddress,
+          visitedProtocolAddresses: {protocolAddress},
+        ),
+      );
     }
   }
 
@@ -3633,6 +3655,70 @@ String? _readObjCProtocolNameFromBytes(
   return _readCStringAtAddressFromBytes(bytes, stringSections, nameAddress);
 }
 
+List<MachOObjCProtocol> _readObjCInheritedProtocolsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int protocolAddress,
+  required Set<int> visitedProtocolAddresses,
+}) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final inheritedProtocolListAddress =
+      _readPointerAtAddressFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        protocolAddress + 2 * pointerSize,
+        is64Bit: is64Bit,
+      ) ??
+      0;
+  if (inheritedProtocolListAddress == 0) return const [];
+
+  return _readObjCProtocolListFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    is64Bit: is64Bit,
+    allSections: allSections,
+    stringSections: stringSections,
+    protocolListAddress: inheritedProtocolListAddress,
+    visitedProtocolAddresses: visitedProtocolAddresses,
+  );
+}
+
+List<MachOObjCProtocol> _readObjCInheritedProtocolsFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int protocolAddress,
+  required Set<int> visitedProtocolAddresses,
+}) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final inheritedProtocolListAddress =
+      _readPointerAtAddressFromBytes(
+        bytes,
+        allSections,
+        protocolAddress + 2 * pointerSize,
+        is64Bit: is64Bit,
+      ) ??
+      0;
+  if (inheritedProtocolListAddress == 0) return const [];
+
+  return _readObjCProtocolListFromBytes(
+    bytes,
+    is64Bit: is64Bit,
+    allSections: allSections,
+    stringSections: stringSections,
+    protocolListAddress: inheritedProtocolListAddress,
+    visitedProtocolAddresses: visitedProtocolAddresses,
+  );
+}
+
 List<MachOObjCProtocol> _readObjCProtocolListFromFile(
   RandomAccessFile raf,
   int fileOffset,
@@ -3641,6 +3727,7 @@ List<MachOObjCProtocol> _readObjCProtocolListFromFile(
   required List<MachOSection> allSections,
   required List<MachOSection> stringSections,
   required int protocolListAddress,
+  Set<int>? visitedProtocolAddresses,
 }) {
   final section = _sectionContainingAddress(allSections, protocolListAddress);
   if (section == null || !_canReadSection(section, availableLength)) {
@@ -3662,6 +3749,7 @@ List<MachOObjCProtocol> _readObjCProtocolListFromFile(
   }
 
   final protocols = <MachOObjCProtocol>[];
+  final visited = visitedProtocolAddresses ?? <int>{};
   for (var i = 0; i < protocolCount; i += 1) {
     final entryAddress = protocolListAddress + pointerSize + i * pointerSize;
     final protocolAddress = _readPointerAtAddressFromFile(
@@ -3673,6 +3761,7 @@ List<MachOObjCProtocol> _readObjCProtocolListFromFile(
       is64Bit: is64Bit,
     );
     if (protocolAddress == null || protocolAddress == 0) continue;
+    if (!visited.add(protocolAddress)) continue;
 
     final name = _readObjCProtocolNameFromFile(
       raf,
@@ -3692,6 +3781,31 @@ List<MachOObjCProtocol> _readObjCProtocolListFromFile(
         protocolAddress: protocolAddress,
       ),
     );
+
+    final inheritedProtocolListAddress =
+        _readPointerAtAddressFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          allSections,
+          protocolAddress + 2 * pointerSize,
+          is64Bit: is64Bit,
+        ) ??
+        0;
+    if (inheritedProtocolListAddress != 0) {
+      protocols.addAll(
+        _readObjCProtocolListFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          protocolListAddress: inheritedProtocolListAddress,
+          visitedProtocolAddresses: visited,
+        ),
+      );
+    }
   }
 
   return protocols;
@@ -3703,6 +3817,7 @@ List<MachOObjCProtocol> _readObjCProtocolListFromBytes(
   required List<MachOSection> allSections,
   required List<MachOSection> stringSections,
   required int protocolListAddress,
+  Set<int>? visitedProtocolAddresses,
 }) {
   final section = _sectionContainingAddress(allSections, protocolListAddress);
   if (section == null || !_canReadSection(section, bytes.length)) {
@@ -3722,6 +3837,7 @@ List<MachOObjCProtocol> _readObjCProtocolListFromBytes(
   }
 
   final protocols = <MachOObjCProtocol>[];
+  final visited = visitedProtocolAddresses ?? <int>{};
   for (var i = 0; i < protocolCount; i += 1) {
     final entryAddress = protocolListAddress + pointerSize + i * pointerSize;
     final protocolAddress = _readPointerAtAddressFromBytes(
@@ -3731,6 +3847,7 @@ List<MachOObjCProtocol> _readObjCProtocolListFromBytes(
       is64Bit: is64Bit,
     );
     if (protocolAddress == null || protocolAddress == 0) continue;
+    if (!visited.add(protocolAddress)) continue;
 
     final name = _readObjCProtocolNameFromBytes(
       bytes,
@@ -3748,6 +3865,27 @@ List<MachOObjCProtocol> _readObjCProtocolListFromBytes(
         protocolAddress: protocolAddress,
       ),
     );
+
+    final inheritedProtocolListAddress =
+        _readPointerAtAddressFromBytes(
+          bytes,
+          allSections,
+          protocolAddress + 2 * pointerSize,
+          is64Bit: is64Bit,
+        ) ??
+        0;
+    if (inheritedProtocolListAddress != 0) {
+      protocols.addAll(
+        _readObjCProtocolListFromBytes(
+          bytes,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          protocolListAddress: inheritedProtocolListAddress,
+          visitedProtocolAddresses: visited,
+        ),
+      );
+    }
   }
 
   return protocols;
@@ -3761,6 +3899,7 @@ List<MachOObjCMethod> _readObjCProtocolListMethodsFromFile(
   required List<MachOSection> allSections,
   required List<MachOSection> stringSections,
   required int protocolListAddress,
+  Set<int>? visitedProtocolAddresses,
 }) {
   final pointerSize = is64Bit ? 8 : 4;
   final protocolCount = _readPointerAtAddressFromFile(
@@ -3777,6 +3916,7 @@ List<MachOObjCMethod> _readObjCProtocolListMethodsFromFile(
   }
 
   final methods = <MachOObjCMethod>[];
+  final visited = visitedProtocolAddresses ?? <int>{};
   for (var i = 0; i < protocolCount; i += 1) {
     final entryAddress = protocolListAddress + pointerSize + i * pointerSize;
     final protocolAddress = _readPointerAtAddressFromFile(
@@ -3788,6 +3928,7 @@ List<MachOObjCMethod> _readObjCProtocolListMethodsFromFile(
       is64Bit: is64Bit,
     );
     if (protocolAddress == null || protocolAddress == 0) continue;
+    if (!visited.add(protocolAddress)) continue;
 
     methods.addAll(
       _readObjCProtocolMethodsFromFile(
@@ -3798,6 +3939,7 @@ List<MachOObjCMethod> _readObjCProtocolListMethodsFromFile(
         allSections: allSections,
         stringSections: stringSections,
         protocolAddress: protocolAddress,
+        visitedProtocolAddresses: visited,
       ),
     );
   }
@@ -3813,7 +3955,11 @@ List<MachOObjCMethod> _readObjCProtocolMethodsFromFile(
   required List<MachOSection> allSections,
   required List<MachOSection> stringSections,
   required int protocolAddress,
+  Set<int>? visitedProtocolAddresses,
 }) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final visited = visitedProtocolAddresses ?? <int>{};
+  visited.add(protocolAddress);
   final protocolName = _readObjCProtocolNameFromFile(
     raf,
     fileOffset,
@@ -3854,6 +4000,31 @@ List<MachOObjCMethod> _readObjCProtocolMethodsFromFile(
     );
   }
 
+  final inheritedProtocolListAddress =
+      _readPointerAtAddressFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        protocolAddress + 2 * pointerSize,
+        is64Bit: is64Bit,
+      ) ??
+      0;
+  if (inheritedProtocolListAddress != 0) {
+    methods.addAll(
+      _readObjCProtocolListMethodsFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        protocolListAddress: inheritedProtocolListAddress,
+        visitedProtocolAddresses: visited,
+      ),
+    );
+  }
+
   return methods;
 }
 
@@ -3863,6 +4034,7 @@ List<MachOObjCMethod> _readObjCProtocolListMethodsFromBytes(
   required List<MachOSection> allSections,
   required List<MachOSection> stringSections,
   required int protocolListAddress,
+  Set<int>? visitedProtocolAddresses,
 }) {
   final pointerSize = is64Bit ? 8 : 4;
   final protocolCount = _readPointerAtAddressFromBytes(
@@ -3877,6 +4049,7 @@ List<MachOObjCMethod> _readObjCProtocolListMethodsFromBytes(
   }
 
   final methods = <MachOObjCMethod>[];
+  final visited = visitedProtocolAddresses ?? <int>{};
   for (var i = 0; i < protocolCount; i += 1) {
     final entryAddress = protocolListAddress + pointerSize + i * pointerSize;
     final protocolAddress = _readPointerAtAddressFromBytes(
@@ -3886,6 +4059,7 @@ List<MachOObjCMethod> _readObjCProtocolListMethodsFromBytes(
       is64Bit: is64Bit,
     );
     if (protocolAddress == null || protocolAddress == 0) continue;
+    if (!visited.add(protocolAddress)) continue;
 
     methods.addAll(
       _readObjCProtocolMethodsFromBytes(
@@ -3894,6 +4068,7 @@ List<MachOObjCMethod> _readObjCProtocolListMethodsFromBytes(
         allSections: allSections,
         stringSections: stringSections,
         protocolAddress: protocolAddress,
+        visitedProtocolAddresses: visited,
       ),
     );
   }
@@ -3907,7 +4082,11 @@ List<MachOObjCMethod> _readObjCProtocolMethodsFromBytes(
   required List<MachOSection> allSections,
   required List<MachOSection> stringSections,
   required int protocolAddress,
+  Set<int>? visitedProtocolAddresses,
 }) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final visited = visitedProtocolAddresses ?? <int>{};
+  visited.add(protocolAddress);
   final protocolName = _readObjCProtocolNameFromBytes(
     bytes,
     is64Bit: is64Bit,
@@ -3938,6 +4117,27 @@ List<MachOObjCMethod> _readObjCProtocolMethodsFromBytes(
         stringSections: stringSections,
         className: protocolName,
         methodListAddress: methodListAddress,
+      ),
+    );
+  }
+
+  final inheritedProtocolListAddress =
+      _readPointerAtAddressFromBytes(
+        bytes,
+        allSections,
+        protocolAddress + 2 * pointerSize,
+        is64Bit: is64Bit,
+      ) ??
+      0;
+  if (inheritedProtocolListAddress != 0) {
+    methods.addAll(
+      _readObjCProtocolListMethodsFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        protocolListAddress: inheritedProtocolListAddress,
+        visitedProtocolAddresses: visited,
       ),
     );
   }
@@ -4190,6 +4390,7 @@ List<MachOObjCProperty> _readObjCProtocolListPropertiesFromFile(
   required List<MachOSection> allSections,
   required List<MachOSection> stringSections,
   required int protocolListAddress,
+  Set<int>? visitedProtocolAddresses,
 }) {
   final pointerSize = is64Bit ? 8 : 4;
   final protocolCount = _readPointerAtAddressFromFile(
@@ -4206,6 +4407,7 @@ List<MachOObjCProperty> _readObjCProtocolListPropertiesFromFile(
   }
 
   final properties = <MachOObjCProperty>[];
+  final visited = visitedProtocolAddresses ?? <int>{};
   for (var i = 0; i < protocolCount; i += 1) {
     final entryAddress = protocolListAddress + pointerSize + i * pointerSize;
     final protocolAddress = _readPointerAtAddressFromFile(
@@ -4217,6 +4419,7 @@ List<MachOObjCProperty> _readObjCProtocolListPropertiesFromFile(
       is64Bit: is64Bit,
     );
     if (protocolAddress == null || protocolAddress == 0) continue;
+    if (!visited.add(protocolAddress)) continue;
 
     properties.addAll(
       _readObjCProtocolPropertiesFromFile(
@@ -4227,6 +4430,7 @@ List<MachOObjCProperty> _readObjCProtocolListPropertiesFromFile(
         allSections: allSections,
         stringSections: stringSections,
         protocolAddress: protocolAddress,
+        visitedProtocolAddresses: visited,
       ),
     );
   }
@@ -4242,7 +4446,11 @@ List<MachOObjCProperty> _readObjCProtocolPropertiesFromFile(
   required List<MachOSection> allSections,
   required List<MachOSection> stringSections,
   required int protocolAddress,
+  Set<int>? visitedProtocolAddresses,
 }) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final visited = visitedProtocolAddresses ?? <int>{};
+  visited.add(protocolAddress);
   final protocolName = _readObjCProtocolNameFromFile(
     raf,
     fileOffset,
@@ -4276,11 +4484,7 @@ List<MachOObjCProperty> _readObjCProtocolPropertiesFromFile(
       instancePropertyListAddress,
     if (classPropertyListAddress != 0) classPropertyListAddress,
   ];
-  if (propertyListAddresses.isEmpty) {
-    return const [];
-  }
-
-  return [
+  final properties = [
     for (final propertyListAddress in propertyListAddresses)
       ..._readObjCPropertyListFromFile(
         raf,
@@ -4293,6 +4497,33 @@ List<MachOObjCProperty> _readObjCProtocolPropertiesFromFile(
         propertyListAddress: propertyListAddress,
       ),
   ];
+
+  final inheritedProtocolListAddress =
+      _readPointerAtAddressFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        protocolAddress + 2 * pointerSize,
+        is64Bit: is64Bit,
+      ) ??
+      0;
+  if (inheritedProtocolListAddress != 0) {
+    properties.addAll(
+      _readObjCProtocolListPropertiesFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        protocolListAddress: inheritedProtocolListAddress,
+        visitedProtocolAddresses: visited,
+      ),
+    );
+  }
+
+  return properties;
 }
 
 int _readObjCProtocolClassPropertiesFromFile(
@@ -4407,6 +4638,7 @@ List<MachOObjCProperty> _readObjCProtocolListPropertiesFromBytes(
   required List<MachOSection> allSections,
   required List<MachOSection> stringSections,
   required int protocolListAddress,
+  Set<int>? visitedProtocolAddresses,
 }) {
   final pointerSize = is64Bit ? 8 : 4;
   final protocolCount = _readPointerAtAddressFromBytes(
@@ -4421,6 +4653,7 @@ List<MachOObjCProperty> _readObjCProtocolListPropertiesFromBytes(
   }
 
   final properties = <MachOObjCProperty>[];
+  final visited = visitedProtocolAddresses ?? <int>{};
   for (var i = 0; i < protocolCount; i += 1) {
     final entryAddress = protocolListAddress + pointerSize + i * pointerSize;
     final protocolAddress = _readPointerAtAddressFromBytes(
@@ -4430,6 +4663,7 @@ List<MachOObjCProperty> _readObjCProtocolListPropertiesFromBytes(
       is64Bit: is64Bit,
     );
     if (protocolAddress == null || protocolAddress == 0) continue;
+    if (!visited.add(protocolAddress)) continue;
 
     properties.addAll(
       _readObjCProtocolPropertiesFromBytes(
@@ -4438,6 +4672,7 @@ List<MachOObjCProperty> _readObjCProtocolListPropertiesFromBytes(
         allSections: allSections,
         stringSections: stringSections,
         protocolAddress: protocolAddress,
+        visitedProtocolAddresses: visited,
       ),
     );
   }
@@ -4451,7 +4686,11 @@ List<MachOObjCProperty> _readObjCProtocolPropertiesFromBytes(
   required List<MachOSection> allSections,
   required List<MachOSection> stringSections,
   required int protocolAddress,
+  Set<int>? visitedProtocolAddresses,
 }) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final visited = visitedProtocolAddresses ?? <int>{};
+  visited.add(protocolAddress);
   final protocolName = _readObjCProtocolNameFromBytes(
     bytes,
     is64Bit: is64Bit,
@@ -4479,11 +4718,7 @@ List<MachOObjCProperty> _readObjCProtocolPropertiesFromBytes(
       instancePropertyListAddress,
     if (classPropertyListAddress != 0) classPropertyListAddress,
   ];
-  if (propertyListAddresses.isEmpty) {
-    return const [];
-  }
-
-  return [
+  final properties = [
     for (final propertyListAddress in propertyListAddresses)
       ..._readObjCPropertyListFromBytes(
         bytes,
@@ -4494,6 +4729,29 @@ List<MachOObjCProperty> _readObjCProtocolPropertiesFromBytes(
         propertyListAddress: propertyListAddress,
       ),
   ];
+
+  final inheritedProtocolListAddress =
+      _readPointerAtAddressFromBytes(
+        bytes,
+        allSections,
+        protocolAddress + 2 * pointerSize,
+        is64Bit: is64Bit,
+      ) ??
+      0;
+  if (inheritedProtocolListAddress != 0) {
+    properties.addAll(
+      _readObjCProtocolListPropertiesFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        protocolListAddress: inheritedProtocolListAddress,
+        visitedProtocolAddresses: visited,
+      ),
+    );
+  }
+
+  return properties;
 }
 
 int _readObjCProtocolClassPropertiesFromBytes(

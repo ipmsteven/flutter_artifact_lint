@@ -168,18 +168,19 @@ Objective-C class references are resolved from `__objc_classrefs` and
 strings when the relevant sections are present.
 Objective-C protocol references are resolved from `__objc_protolist`,
 `__objc_protorefs`, `class_ro_t.baseProtocols`, and `category_t.protocols`
-through `protocol_t` metadata to protocol-name strings when the relevant
-sections are present.
+through `protocol_t` metadata, including inherited `protocol_t.protocols`, to
+protocol-name strings when the relevant sections are present.
 Objective-C big and small method lists are resolved from
 class and metaclass `class_ro_t.baseMethods` and local relative method-list
-lists, plus `protocol_t` required and optional method lists, through
-`method_list_t` entries back to `__objc_methname` strings when the relevant
-Objective-C metadata sections are present.
+lists, plus direct and inherited `protocol_t` required and optional method
+lists, through `method_list_t` entries back to `__objc_methname` strings when
+the relevant Objective-C metadata sections are present.
 Objective-C ivar and property lists are resolved from `class_ro_t.ivars`,
 class and metaclass `class_ro_t.baseProperties`,
 `category_t.instanceProperties`, `category_t.classProperties`,
-`protocol_t.instanceProperties`, and `protocol_t._classProperties`, including
-type encodings and property attributes that reference Objective-C classes.
+direct and inherited `protocol_t.instanceProperties`, and
+`protocol_t._classProperties`, including type encodings and property attributes
+that reference Objective-C classes.
 Objective-C category instance and class method lists are resolved from
 `__objc_catlist` and `__objc_nlcatlist` through `category_t` metadata.
 For modern arm64 Mach-O binaries, Objective-C metadata pointers encoded as
