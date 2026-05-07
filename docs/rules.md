@@ -153,7 +153,10 @@ C-string values are parsed from `__cstring`, `__objc_methname`,
 `__objc_classname`, and `__objc_methtype` sections. Swift metadata strings are
 parsed from `__swift5_reflstr` and `__swift5_typeref` sections. Swift nominal
 type names are resolved from `__swift5_types` relative context descriptors when
-the descriptor and name target sections are present in the artifact.
+the descriptor and name target sections are present in the artifact. Swift
+protocol conformance descriptors are resolved from `__swift5_proto` to recover
+the conforming type name and protocol name when both target descriptors are
+present.
 Objective-C selector references are resolved from `__objc_selrefs` pointers
 back to `__objc_methname` strings when section virtual addresses and file
 ranges are available.

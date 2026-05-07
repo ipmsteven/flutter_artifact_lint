@@ -201,6 +201,15 @@ class IosEvidenceExtractor {
         }
       }
 
+      for (final conformance in machoReport.swiftProtocolConformances) {
+        for (final token in _matchedTokens(conformance.typeName, tokens)) {
+          addEvidence(token, '${entity.path}#${conformance.sourceSection}');
+        }
+        for (final token in _matchedTokens(conformance.protocolName, tokens)) {
+          addEvidence(token, '${entity.path}#${conformance.sourceSection}');
+        }
+      }
+
       for (final symbol in machoReport.symbols) {
         for (final token in _matchedTokens(symbol.name, tokens)) {
           addEvidence(token, '${entity.path}#LC_SYMTAB');

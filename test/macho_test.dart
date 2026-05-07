@@ -544,6 +544,34 @@ void main() {
       );
     });
 
+    test('resolves Swift protocol conformances from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithSwiftProtocolConformances([
+          (typeName: 'PermissionState', protocolName: 'PermissionProtocol'),
+          (typeName: 'CameraPurpose', protocolName: 'CameraPurposeProviding'),
+        ]),
+      );
+
+      expect(
+        report.swiftProtocolConformances.map(
+          (conformance) => conformance.typeName,
+        ),
+        containsAll(['PermissionState', 'CameraPurpose']),
+      );
+      expect(
+        report.swiftProtocolConformances.map(
+          (conformance) => conformance.protocolName,
+        ),
+        containsAll(['PermissionProtocol', 'CameraPurposeProviding']),
+      );
+      expect(
+        report.swiftProtocolConformances.map(
+          (conformance) => conformance.sourceSection,
+        ),
+        everyElement('__TEXT.__swift5_proto'),
+      );
+    });
+
     test('reads C strings from the file-backed parser', () async {
       final root = await Directory.systemTemp.createTemp('fal_macho_');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -1167,6 +1195,73 @@ List<int> thinMachOWithSwiftTypeDescriptors(
     ...command,
     ...List.filled(paddingBeforeData, 0),
     ...typeEntries,
+    ...descriptorData,
+  ];
+}
+
+List<int> thinMachOWithSwiftProtocolConformances(
+  List<({String typeName, String protocolName})> conformances, {
+  int paddingBeforeData = 0,
+}) {
+  final protoAddress = 0x100000100;
+  final descriptorAddress = 0x100001000;
+  final descriptorData = <int>[];
+  final protoEntries = <int>[];
+
+  for (var i = 0; i < conformances.length; i += 1) {
+    final entryAddress = protoAddress + i * 4;
+    final currentConformanceAddress = descriptorAddress + descriptorData.length;
+    final typeDescriptorAddress = currentConformanceAddress + 16;
+    final typeNameAddress = typeDescriptorAddress + 16;
+    final protocolDescriptorAddress =
+        typeNameAddress + latin1.encode(conformances[i].typeName).length + 1;
+    final protocolNameAddress = protocolDescriptorAddress + 16;
+    protoEntries.addAll(u32(currentConformanceAddress - entryAddress));
+    descriptorData.addAll([
+      ...u32(protocolDescriptorAddress - currentConformanceAddress),
+      ...u32(typeDescriptorAddress - (currentConformanceAddress + 4)),
+      ...u32(0), // witness table
+      ...u32(0), // conformance flags
+      ...u32(0), // type flags
+      ...u32(0), // type parent
+      ...u32(typeNameAddress - (typeDescriptorAddress + 8)),
+      ...u32(0), // type access function
+      ...latin1.encode(conformances[i].typeName),
+      0,
+      ...u32(0), // protocol flags
+      ...u32(0), // protocol parent
+      ...u32(protocolNameAddress - (protocolDescriptorAddress + 8)),
+      ...u32(0), // protocol requirements signature
+      ...latin1.encode(conformances[i].protocolName),
+      0,
+    ]);
+  }
+
+  final commandSize = 72 + 2 * 80;
+  final protoOffset = 32 + commandSize + paddingBeforeData;
+  final descriptorOffset = protoOffset + protoEntries.length;
+  final command = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__swift5_proto',
+      segmentName: '__TEXT',
+      address: protoAddress,
+      fileOffset: protoOffset,
+      size: protoEntries.length,
+    ),
+    (
+      name: '__const',
+      segmentName: '__TEXT',
+      address: descriptorAddress,
+      fileOffset: descriptorOffset,
+      size: descriptorData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
+    ...List.filled(paddingBeforeData, 0),
+    ...protoEntries,
     ...descriptorData,
   ];
 }

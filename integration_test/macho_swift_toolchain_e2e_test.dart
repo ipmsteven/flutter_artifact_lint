@@ -30,10 +30,13 @@ void main() {
 
       final source = File(p.join(tempDir.path, 'main.swift'))
         ..writeAsStringSync('''
-public struct PermissionState {
-  public let authorized: Bool
-  public init(authorized: Bool) {
-    self.authorized = authorized
+public protocol PermissionProtocol {
+  func requestWhenInUseAuthorization()
+}
+
+public struct PermissionState: PermissionProtocol {
+  public init() {}
+  public func requestWhenInUseAuthorization() {
   }
 }
 
@@ -44,7 +47,8 @@ public struct CameraPurpose {
   }
 }
 
-let _ = PermissionState(authorized: true)
+let value: PermissionProtocol = PermissionState()
+value.requestWhenInUseAuthorization()
 let _ = CameraPurpose(label: "camera")
 ''');
       final binary = File(p.join(tempDir.path, 'SwiftFixture'));
@@ -65,6 +69,18 @@ let _ = CameraPurpose(label: "camera")
       expect(
         report.swiftTypes.map((swiftType) => swiftType.name),
         containsAll(['PermissionState', 'CameraPurpose']),
+      );
+      expect(
+        report.swiftProtocolConformances.map(
+          (conformance) => conformance.typeName,
+        ),
+        contains('PermissionState'),
+      );
+      expect(
+        report.swiftProtocolConformances.map(
+          (conformance) => conformance.protocolName,
+        ),
+        contains('PermissionProtocol'),
       );
     },
     timeout: const Timeout(Duration(minutes: 3)),
