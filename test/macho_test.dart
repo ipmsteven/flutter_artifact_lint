@@ -734,6 +734,19 @@ void main() {
     );
 
     test(
+      'does not resolve authenticated chained bind pointers as Objective-C selector pointers',
+      () {
+        final report = const MachOParser().parse(
+          thinMachOWithObjCSelectorRefs([
+            'requestWhenInUseAuthorization',
+          ], authenticatedChainedBindPointers: true),
+        );
+
+        expect(report.objcSelectors, isEmpty);
+      },
+    );
+
+    test(
       'resolves Objective-C selector references from the file-backed parser',
       () async {
         final root = await Directory.systemTemp.createTemp('fal_macho_');
@@ -1839,6 +1852,7 @@ List<int> thinMachOWithObjCSelectorRefs(
   int paddingBeforeData = 0,
   bool chainedPointers = false,
   bool authenticatedChainedPointers = false,
+  bool authenticatedChainedBindPointers = false,
 }) {
   final methnameAddress = 0x100000100;
   final selrefsAddress = 0x100000800;
@@ -1847,7 +1861,9 @@ List<int> thinMachOWithObjCSelectorRefs(
   final pointerData = [
     for (final selectorOffset in selectorOffsets)
       ...u64(
-        authenticatedChainedPointers
+        authenticatedChainedBindPointers
+            ? chainedPointerArm64eAuthBind(methnameAddress + selectorOffset)
+            : authenticatedChainedPointers
             ? chainedPointerArm64eAuthRebaseOffset(
                 methnameAddress + selectorOffset,
               )
@@ -1902,6 +1918,13 @@ int chainedPointerArm64eAuthRebaseOffset(
   const diversity = 0x1234;
   const authBit = 1 << 63;
   return authBit | (diversity << 32) | (address - imageBase);
+}
+
+int chainedPointerArm64eAuthBind(int address, {int imageBase = 0x100000000}) {
+  const diversity = 0x1230;
+  const bindBit = 1 << 62;
+  const authBit = 1 << 63;
+  return authBit | bindBit | (diversity << 32) | (address - imageBase);
 }
 
 List<int> thinMachOWithObjCClassRef(

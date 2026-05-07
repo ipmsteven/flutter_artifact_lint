@@ -6047,6 +6047,11 @@ int _normalizedPointerValue(
   final imageBase = _imageBaseAddress(sections);
   if (imageBase == null) return raw;
 
+  final isArm64eAuthBind =
+      (raw & _dyldChainedPointerArm64eAuthBit) != 0 &&
+      (raw & _dyldChainedPointerArm64eBindBit) != 0;
+  if (isArm64eAuthBind) return raw;
+
   final isArm64eAuthRebase =
       (raw & _dyldChainedPointerArm64eAuthBit) != 0 &&
       (raw & _dyldChainedPointerArm64eBindBit) == 0;
