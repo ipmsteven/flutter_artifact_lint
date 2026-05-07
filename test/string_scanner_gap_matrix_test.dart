@@ -88,6 +88,26 @@ void main() {
     );
   });
 
+  group('Mach-O architecture parser acceptance', () {
+    test(
+      'reports architecture inventory from a fat Mach-O main binary',
+      () async {
+        final result = await _scanAppWithMainBinary(
+          _fatMachO([
+            _machOHeaderBytes(),
+            _machOHeaderBytes(cpuType: 0x01000007),
+          ]),
+        );
+        final finding = result.info.singleWhere(
+          (finding) => finding.ruleId == 'ios.macho.architecture',
+        );
+
+        expect(finding.message, contains('arm64'));
+        expect(finding.message, contains('x86_64'));
+      },
+    );
+  });
+
   group('known String Scanner gaps', () {
     test(
       'misses push capability when evidence only exists in signed-artifact entitlements',
@@ -207,10 +227,10 @@ List<int> _machOBuildVersionBytes() {
   ];
 }
 
-List<int> _machOHeaderBytes({int sizeofcmds = 0}) {
+List<int> _machOHeaderBytes({int sizeofcmds = 0, int cpuType = 0x0100000c}) {
   return [
     0xcf, 0xfa, 0xed, 0xfe, // MH_MAGIC_64
-    ..._u32(0x0100000c), // CPU_TYPE_ARM64
+    ..._u32(cpuType),
     ..._u32(0), // CPU_SUBTYPE_ARM64_ALL
     ..._u32(2), // MH_EXECUTE
     ..._u32(sizeofcmds == 0 ? 0 : 1), // ncmds

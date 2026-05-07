@@ -3,10 +3,12 @@ import 'dart:convert';
 class MachOReport {
   const MachOReport({
     required this.linkedDylibs,
+    this.architectures = const [],
     this.buildVersions = const [],
   });
 
   final List<MachODylib> linkedDylibs;
+  final List<MachOArchitecture> architectures;
   final List<MachOBuildVersion> buildVersions;
 }
 
@@ -15,6 +17,21 @@ class MachODylib {
 
   final String path;
   final bool weak;
+}
+
+class MachOArchitecture {
+  const MachOArchitecture({required this.cpuType, required this.cpuSubtype});
+
+  final int cpuType;
+  final int cpuSubtype;
+
+  String get name => switch (cpuType) {
+    0x0100000c => 'arm64',
+    0x01000007 => 'x86_64',
+    12 => 'arm',
+    7 => 'i386',
+    _ => 'cpu $cpuType subtype $cpuSubtype',
+  };
 }
 
 class MachOBuildVersion {
@@ -55,6 +72,7 @@ class MachOParser {
     final thinReport = _parseThin(bytes);
     return _deduplicatedReport(
       thinReport.linkedDylibs,
+      thinReport.architectures,
       thinReport.buildVersions,
     );
   }
@@ -76,6 +94,7 @@ class MachOParser {
     final archSize = fat64 ? 32 : 20;
     var offset = 8;
     final linkedDylibs = <MachODylib>[];
+    final architectures = <MachOArchitecture>[];
     final buildVersions = <MachOBuildVersion>[];
 
     for (var i = 0; i < architectureCount; i += 1) {
@@ -94,13 +113,14 @@ class MachOParser {
           bytes.sublist(sliceOffset, sliceOffset + sliceSize),
         );
         linkedDylibs.addAll(sliceReport.linkedDylibs);
+        architectures.addAll(sliceReport.architectures);
         buildVersions.addAll(sliceReport.buildVersions);
       }
 
       offset += archSize;
     }
 
-    return _deduplicatedReport(linkedDylibs, buildVersions);
+    return _deduplicatedReport(linkedDylibs, architectures, buildVersions);
   }
 
   MachOReport _parseThin(List<int> bytes) {
@@ -110,6 +130,9 @@ class MachOParser {
     }
 
     final linkedDylibs = <MachODylib>[];
+    final architectures = [
+      MachOArchitecture(cpuType: header.cpuType, cpuSubtype: header.cpuSubtype),
+    ];
     final buildVersions = <MachOBuildVersion>[];
     var offset = header.loadCommandsOffset;
 
@@ -154,6 +177,7 @@ class MachOParser {
 
     return MachOReport(
       linkedDylibs: linkedDylibs,
+      architectures: architectures,
       buildVersions: buildVersions,
     );
   }
@@ -161,6 +185,7 @@ class MachOParser {
 
 MachOReport _deduplicatedReport(
   List<MachODylib> dylibs, [
+  List<MachOArchitecture> architectures = const [],
   List<MachOBuildVersion> buildVersions = const [],
 ]) {
   final byPath = <String, MachODylib>{};
@@ -171,6 +196,12 @@ MachOReport _deduplicatedReport(
         : MachODylib(path: dylib.path, weak: existing.weak && dylib.weak);
   }
 
+  final byArchitecture = <String, MachOArchitecture>{};
+  for (final architecture in architectures) {
+    byArchitecture['${architecture.cpuType}|${architecture.cpuSubtype}'] =
+        architecture;
+  }
+
   final byBuildVersion = <String, MachOBuildVersion>{};
   for (final buildVersion in buildVersions) {
     byBuildVersion['${buildVersion.platform}|${buildVersion.minimumOsVersion}|${buildVersion.sdkVersion}'] =
@@ -179,17 +210,22 @@ MachOReport _deduplicatedReport(
 
   return MachOReport(
     linkedDylibs: byPath.values.toList(),
+    architectures: byArchitecture.values.toList(),
     buildVersions: byBuildVersion.values.toList(),
   );
 }
 
 class _MachOHeader {
   const _MachOHeader({
+    required this.cpuType,
+    required this.cpuSubtype,
     required this.commandCount,
     required this.loadCommandsOffset,
     required this.loadCommandsEnd,
   });
 
+  final int cpuType;
+  final int cpuSubtype;
   final int commandCount;
   final int loadCommandsOffset;
   final int loadCommandsEnd;
@@ -210,6 +246,8 @@ _MachOHeader? _readHeader(List<int> bytes) {
   if (bytes.length < headerSize) return null;
 
   return _MachOHeader(
+    cpuType: _readU32(bytes, 4),
+    cpuSubtype: _readU32(bytes, 8),
     commandCount: _readU32(bytes, 16),
     loadCommandsOffset: headerSize,
     loadCommandsEnd: _boundedEnd(headerSize, _readU32(bytes, 20), bytes.length),

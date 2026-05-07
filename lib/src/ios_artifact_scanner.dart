@@ -436,6 +436,7 @@ List<LintFinding> _binaryEvidenceRules(
   );
   final findings = <LintFinding>[];
 
+  findings.addAll(_machoArchitectureInfo(evidence));
   findings.addAll(_machoBuildVersionInfo(evidence));
 
   void warnMissingPermission({
@@ -687,6 +688,23 @@ List<String> _privateFrameworkEvidence(EvidenceReport evidence) {
       .where((token) => token.contains('/PrivateFrameworks/'))
       .toList()
     ..sort();
+}
+
+List<LintFinding> _machoArchitectureInfo(EvidenceReport evidence) {
+  return evidence.architectures.map((architectureEvidence) {
+    final names =
+        architectureEvidence.architectures
+            .map((architecture) => architecture.name)
+            .toSet()
+            .toList()
+          ..sort();
+    return buildFinding(
+      'ios.macho.architecture',
+      message: names.join(', '),
+      path: architectureEvidence.sourcePath,
+      evidence: names,
+    );
+  }).toList();
 }
 
 List<LintFinding> _machoBuildVersionInfo(EvidenceReport evidence) {

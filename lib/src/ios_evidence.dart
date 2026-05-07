@@ -9,12 +9,14 @@ class EvidenceReport {
     required this.tokens,
     required this.sourcesByToken,
     required this.scannedFiles,
+    required this.architectures,
     required this.buildVersions,
   });
 
   final Set<String> tokens;
   final Map<String, Set<String>> sourcesByToken;
   final List<String> scannedFiles;
+  final List<MachOArchitectureEvidence> architectures;
   final List<MachOBuildVersionEvidence> buildVersions;
 
   List<String> matched(List<String> candidates) {
@@ -30,6 +32,16 @@ class EvidenceReport {
     }
     return result;
   }
+}
+
+class MachOArchitectureEvidence {
+  const MachOArchitectureEvidence({
+    required this.sourcePath,
+    required this.architectures,
+  });
+
+  final String sourcePath;
+  final List<MachOArchitecture> architectures;
 }
 
 class MachOBuildVersionEvidence {
@@ -58,6 +70,7 @@ class IosEvidenceExtractor {
     final found = <String>{};
     final sources = <String, Set<String>>{};
     final scannedFiles = <String>[];
+    final architectures = <MachOArchitectureEvidence>[];
     final buildVersions = <MachOBuildVersionEvidence>[];
 
     void addEvidence(String token, String sourcePath) {
@@ -84,6 +97,15 @@ class IosEvidenceExtractor {
 
       scannedFiles.add(entity.path);
       final machoReport = const MachOParser().parse(bytes);
+      if (machoReport.architectures.isNotEmpty) {
+        architectures.add(
+          MachOArchitectureEvidence(
+            sourcePath: entity.path,
+            architectures: machoReport.architectures,
+          ),
+        );
+      }
+
       for (final dylib in machoReport.linkedDylibs) {
         final frameworkToken = _frameworkToken(dylib.path);
         if (frameworkToken != null) addEvidence(frameworkToken, entity.path);
@@ -110,6 +132,7 @@ class IosEvidenceExtractor {
       tokens: found,
       sourcesByToken: sources,
       scannedFiles: scannedFiles,
+      architectures: architectures,
       buildVersions: buildVersions,
     );
   }

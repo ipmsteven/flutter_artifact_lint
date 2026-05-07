@@ -69,6 +69,27 @@ void main() {
       );
     });
 
+    test('reads architecture from a thin Mach-O header', () {
+      final report = const MachOParser().parse(thinMachO([]));
+
+      expect(report.architectures, hasLength(1));
+      expect(report.architectures.single.name, 'arm64');
+    });
+
+    test('reads and deduplicates architectures from fat Mach-O slices', () {
+      final arm64Slice = thinMachO([], cpuType: 0x0100000c);
+      final x8664Slice = thinMachO([], cpuType: 0x01000007);
+      final report = const MachOParser().parse(
+        fatMachO([arm64Slice, x8664Slice, arm64Slice]),
+      );
+
+      expect(
+        report.architectures.map((architecture) => architecture.name),
+        containsAll(['arm64', 'x86_64']),
+      );
+      expect(report.architectures, hasLength(2));
+    });
+
     test('does not read commands beyond sizeofcmds', () {
       final report = const MachOParser().parse([
         ...machOHeader64(ncmds: 1, sizeofcmds: 0),
@@ -164,21 +185,32 @@ void main() {
   });
 }
 
-List<int> thinMachO(List<List<int>> commands) {
+List<int> thinMachO(
+  List<List<int>> commands, {
+  int cpuType = 0x0100000c,
+  int cpuSubtype = 0,
+}) {
   return [
     ...machOHeader64(
       ncmds: commands.length,
       sizeofcmds: commands.fold(0, (total, command) => total + command.length),
+      cpuType: cpuType,
+      cpuSubtype: cpuSubtype,
     ),
     for (final command in commands) ...command,
   ];
 }
 
-List<int> machOHeader64({required int ncmds, required int sizeofcmds}) {
+List<int> machOHeader64({
+  required int ncmds,
+  required int sizeofcmds,
+  int cpuType = 0x0100000c,
+  int cpuSubtype = 0,
+}) {
   return [
     0xcf, 0xfa, 0xed, 0xfe, // MH_MAGIC_64
-    ...u32(0x0100000c), // CPU_TYPE_ARM64
-    ...u32(0), // CPU_SUBTYPE_ARM64_ALL
+    ...u32(cpuType),
+    ...u32(cpuSubtype),
     ...u32(2), // MH_EXECUTE
     ...u32(ncmds),
     ...u32(sizeofcmds),

@@ -131,6 +131,14 @@ const ruleRegistry = <String, RuleDefinition>{
         'Reports platform, minimum OS, and SDK metadata from LC_BUILD_VERSION.',
     fix: 'No action required.',
   ),
+  'ios.macho.architecture': RuleDefinition(
+    ruleId: 'ios.macho.architecture',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O architecture',
+    description: 'Reports architecture slices found in Mach-O binaries.',
+    fix: 'No action required.',
+  ),
   'ios.permission.camera.empty': RuleDefinition(
     ruleId: 'ios.permission.camera.empty',
     defaultLevel: FindingLevel.failed,
