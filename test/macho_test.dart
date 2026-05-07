@@ -399,6 +399,42 @@ void main() {
       },
     );
 
+    test('resolves Objective-C class references from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCClassRef('CLLocationManager'),
+      );
+
+      expect(report.objcClasses.single.name, 'CLLocationManager');
+      expect(
+        report.objcClasses.single.sourceSection,
+        '__DATA_CONST.__objc_classrefs',
+      );
+    });
+
+    test(
+      'resolves Objective-C class references from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithObjCClassRef(
+              'UNUserNotificationCenter',
+              paddingBeforeData: 4096,
+            ),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(report.objcClasses.single.name, 'UNUserNotificationCenter');
+        expect(
+          report.objcClasses.single.sourceSection,
+          '__DATA_CONST.__objc_classrefs',
+        );
+      },
+    );
+
     test('ignores non-Mach-O bytes', () {
       final report = const MachOParser().parse(latin1.encode('not a binary'));
 
@@ -540,6 +576,82 @@ List<int> thinMachOWithObjCSelectorRefs(
   ];
 }
 
+List<int> thinMachOWithObjCClassRef(
+  String className, {
+  int paddingBeforeData = 0,
+}) {
+  final classNameAddress = 0x100000100;
+  final classAddress = 0x100000800;
+  final classRoAddress = 0x100001000;
+  final classRefAddress = 0x100001800;
+  final classNameData = cStringBytes([className]);
+  final classData = objcClass64Bytes(classRoAddress | 0x1);
+  final classRoData = objcClassRo64Bytes(classNameAddress);
+  final classRefData = u64(classAddress);
+  final commandsSize = 4 * (72 + 80);
+  final classNameOffset = 32 + commandsSize + paddingBeforeData;
+  final classOffset = classNameOffset + classNameData.length;
+  final classRoOffset = classOffset + classData.length;
+  final classRefOffset = classRoOffset + classRoData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: classNameAddress,
+      fileOffset: classNameOffset,
+      size: classNameData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressRangeCommand('__DATA', [
+    (
+      name: '__objc_data',
+      segmentName: '__DATA',
+      address: classAddress,
+      fileOffset: classOffset,
+      size: classData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: classRoAddress,
+      fileOffset: classRoOffset,
+      size: classRoData.length,
+    ),
+  ]);
+  final refsCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_classrefs',
+      segmentName: '__DATA_CONST',
+      address: classRefAddress,
+      fileOffset: classRefOffset,
+      size: classRefData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 4,
+      sizeofcmds:
+          textCommand.length +
+          dataCommand.length +
+          constCommand.length +
+          refsCommand.length,
+    ),
+    ...textCommand,
+    ...dataCommand,
+    ...constCommand,
+    ...refsCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...classNameData,
+    ...classData,
+    ...classRoData,
+    ...classRefData,
+  ];
+}
+
 List<int> machOHeader64({
   required int ncmds,
   required int sizeofcmds,
@@ -639,6 +751,27 @@ List<int> stringOffsets(List<String> values) {
     offset += latin1.encode(value).length + 1;
   }
   return offsets;
+}
+
+List<int> objcClass64Bytes(int dataAddress) {
+  return [
+    ...u64(0), // isa
+    ...u64(0), // superclass
+    ...u64(0), // cache
+    ...u64(0), // vtable
+    ...u64(dataAddress), // class_ro_t pointer, low bits may contain flags
+  ];
+}
+
+List<int> objcClassRo64Bytes(int nameAddress) {
+  return [
+    ...u32(0), // flags
+    ...u32(0), // instanceStart
+    ...u32(0), // instanceSize
+    ...u32(0), // reserved
+    ...u64(0), // ivarLayout
+    ...u64(nameAddress), // name
+  ];
 }
 
 List<int> machOLoadDylibCommand(

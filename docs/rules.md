@@ -146,6 +146,9 @@ metadata for more precise future Objective-C evidence rules.
 Objective-C selector references are resolved from `__objc_selrefs` pointers
 back to `__objc_methname` strings when section virtual addresses and file
 ranges are available.
+Objective-C class references are resolved from `__objc_classrefs` and
+`__objc_classlist` through `class_t` and `class_ro_t` metadata to class-name
+strings when the relevant sections are present.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or

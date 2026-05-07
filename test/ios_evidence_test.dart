@@ -126,6 +126,27 @@ void main() {
       );
     },
   );
+
+  test(
+    'reports parsed Objective-C class reference sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(thinMachOWithObjCClassRef('CLLocationManager'));
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['CLLocationManager'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor(['CLLocationManager'])['CLLocationManager'],
+        contains('${binary.path}#__DATA_CONST.__objc_classrefs'),
+      );
+    },
+  );
 }
 
 List<int> thinMachO(List<List<int>> commands) {
@@ -271,6 +292,83 @@ List<int> thinMachOWithObjCSelectorRefs(List<String> selectors) {
   ];
 }
 
+List<int> thinMachOWithObjCClassRef(String className) {
+  final classNameAddress = 0x100000100;
+  final classAddress = 0x100000800;
+  final classRoAddress = 0x100001000;
+  final classRefAddress = 0x100001800;
+  final classNameData = cStringBytes([className]);
+  final classData = objcClass64Bytes(classRoAddress | 0x1);
+  final classRoData = objcClassRo64Bytes(classNameAddress);
+  final classRefData = u64(classAddress);
+  final commandsSize = 4 * (72 + 80);
+  final classNameOffset = 32 + commandsSize;
+  final classOffset = classNameOffset + classNameData.length;
+  final classRoOffset = classOffset + classData.length;
+  final classRefOffset = classRoOffset + classRoData.length;
+
+  final textCommand = machoSegment64AddressCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: classNameAddress,
+      fileOffset: classNameOffset,
+      size: classNameData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressCommand('__DATA', [
+    (
+      name: '__objc_data',
+      segmentName: '__DATA',
+      address: classAddress,
+      fileOffset: classOffset,
+      size: classData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: classRoAddress,
+      fileOffset: classRoOffset,
+      size: classRoData.length,
+    ),
+  ]);
+  final refsCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: '__objc_classrefs',
+      segmentName: '__DATA_CONST',
+      address: classRefAddress,
+      fileOffset: classRefOffset,
+      size: classRefData.length,
+    ),
+  ]);
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(4),
+    ...u32(
+      textCommand.length +
+          dataCommand.length +
+          constCommand.length +
+          refsCommand.length,
+    ),
+    ...u32(0),
+    ...u32(0),
+    ...textCommand,
+    ...dataCommand,
+    ...constCommand,
+    ...refsCommand,
+    ...classNameData,
+    ...classData,
+    ...classRoData,
+    ...classRefData,
+  ];
+}
+
 List<int> machoSegment64Command(
   String segmentName,
   List<({String name, String segmentName, int fileOffset, int size})> sections,
@@ -337,6 +435,21 @@ List<int> stringOffsets(List<String> values) {
     offset += latin1.encode(value).length + 1;
   }
   return offsets;
+}
+
+List<int> objcClass64Bytes(int dataAddress) {
+  return [...u64(0), ...u64(0), ...u64(0), ...u64(0), ...u64(dataAddress)];
+}
+
+List<int> objcClassRo64Bytes(int nameAddress) {
+  return [
+    ...u32(0),
+    ...u32(0),
+    ...u32(0),
+    ...u32(0),
+    ...u64(0),
+    ...u64(nameAddress),
+  ];
 }
 
 List<int> fatMachO(

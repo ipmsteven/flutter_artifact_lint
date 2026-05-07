@@ -17,6 +17,7 @@ class MachOReport {
     this.sectionStrings = const [],
     this.dynamicSymbolTables = const [],
     this.objcSelectors = const [],
+    this.objcClasses = const [],
   });
 
   final List<MachODylib> linkedDylibs;
@@ -33,6 +34,7 @@ class MachOReport {
   final List<MachOSectionString> sectionStrings;
   final List<MachODynamicSymbolTable> dynamicSymbolTables;
   final List<MachOObjCSelector> objcSelectors;
+  final List<MachOObjCClass> objcClasses;
 }
 
 class MachODylib {
@@ -164,6 +166,18 @@ class MachOObjCSelector {
   final int targetAddress;
 }
 
+class MachOObjCClass {
+  const MachOObjCClass({
+    required this.name,
+    required this.sourceSection,
+    required this.classAddress,
+  });
+
+  final String name;
+  final String sourceSection;
+  final int classAddress;
+}
+
 class MachOSymbolTable {
   const MachOSymbolTable({
     required this.symbolOffset,
@@ -252,6 +266,7 @@ class MachOParser {
       thinReport.sectionStrings,
       thinReport.dynamicSymbolTables,
       thinReport.objcSelectors,
+      thinReport.objcClasses,
     );
   }
 
@@ -296,6 +311,7 @@ class MachOParser {
     final sectionStrings = <MachOSectionString>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final objcSelectors = <MachOObjCSelector>[];
+    final objcClasses = <MachOObjCClass>[];
 
     for (
       var offset = 0;
@@ -329,6 +345,7 @@ class MachOParser {
       sectionStrings.addAll(sliceReport.sectionStrings);
       dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
       objcSelectors.addAll(sliceReport.objcSelectors);
+      objcClasses.addAll(sliceReport.objcClasses);
     }
 
     return _deduplicatedReport(
@@ -346,6 +363,7 @@ class MachOParser {
       sectionStrings,
       dynamicSymbolTables,
       objcSelectors,
+      objcClasses,
     );
   }
 
@@ -409,7 +427,17 @@ class MachOParser {
       is64Bit: thinIs64Bit,
       segments: report.segments,
     );
-    if (symbols.isEmpty && sectionStrings.isEmpty && objcSelectors.isEmpty) {
+    final objcClasses = _readObjCClassesFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      is64Bit: thinIs64Bit,
+      segments: report.segments,
+    );
+    if (symbols.isEmpty &&
+        sectionStrings.isEmpty &&
+        objcSelectors.isEmpty &&
+        objcClasses.isEmpty) {
       return report;
     }
 
@@ -428,6 +456,7 @@ class MachOParser {
       [...report.sectionStrings, ...sectionStrings],
       report.dynamicSymbolTables,
       [...report.objcSelectors, ...objcSelectors],
+      [...report.objcClasses, ...objcClasses],
     );
   }
 
@@ -461,6 +490,7 @@ class MachOParser {
     final sectionStrings = <MachOSectionString>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final objcSelectors = <MachOObjCSelector>[];
+    final objcClasses = <MachOObjCClass>[];
 
     for (var i = 0; i < architectureCount; i += 1) {
       if (offset + archSize > bytes.length) break;
@@ -491,6 +521,7 @@ class MachOParser {
         sectionStrings.addAll(sliceReport.sectionStrings);
         dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
         objcSelectors.addAll(sliceReport.objcSelectors);
+        objcClasses.addAll(sliceReport.objcClasses);
       }
 
       offset += archSize;
@@ -511,6 +542,7 @@ class MachOParser {
       sectionStrings,
       dynamicSymbolTables,
       objcSelectors,
+      objcClasses,
     );
   }
 
@@ -682,6 +714,11 @@ class MachOParser {
       is64Bit: header.is64Bit,
       segments: segments,
     );
+    final objcClasses = _readObjCClassesFromBytes(
+      bytes,
+      is64Bit: header.is64Bit,
+      segments: segments,
+    );
 
     return MachOReport(
       linkedDylibs: linkedDylibs,
@@ -698,6 +735,7 @@ class MachOParser {
       sectionStrings: sectionStrings,
       dynamicSymbolTables: dynamicSymbolTables,
       objcSelectors: objcSelectors,
+      objcClasses: objcClasses,
     );
   }
 }
@@ -717,6 +755,7 @@ MachOReport _deduplicatedReport(
   List<MachOSectionString> sectionStrings = const [],
   List<MachODynamicSymbolTable> dynamicSymbolTables = const [],
   List<MachOObjCSelector> objcSelectors = const [],
+  List<MachOObjCClass> objcClasses = const [],
 ]) {
   final byPath = <String, MachODylib>{};
   for (final dylib in dylibs) {
@@ -805,6 +844,12 @@ MachOReport _deduplicatedReport(
         objcSelector;
   }
 
+  final byObjCClass = <String, MachOObjCClass>{};
+  for (final objcClass in objcClasses) {
+    byObjCClass['${objcClass.sourceSection}|${objcClass.name}|${objcClass.classAddress}'] =
+        objcClass;
+  }
+
   return MachOReport(
     linkedDylibs: byPath.values.toList(),
     architectures: byArchitecture.values.toList(),
@@ -823,6 +868,7 @@ MachOReport _deduplicatedReport(
     sectionStrings: bySectionString.values.toList(),
     dynamicSymbolTables: byDynamicSymbolTable.values.toList(),
     objcSelectors: byObjCSelector.values.toList(),
+    objcClasses: byObjCClass.values.toList(),
   );
 }
 
@@ -1042,6 +1088,58 @@ List<MachOObjCSelector> _readObjCSelectorsFromFile(
   return selectors;
 }
 
+List<MachOObjCClass> _readObjCClassesFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSegment> segments,
+}) {
+  final classes = <MachOObjCClass>[];
+  final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
+  final stringSections = _stringSections(segments).toList();
+
+  for (final section in _objcClassReferenceSections(segments)) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    final sectionBytes = _readRange(
+      raf,
+      fileOffset + section.fileOffset,
+      section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final classAddress = is64Bit
+          ? _readU64(sectionBytes, offset)
+          : _readU32(sectionBytes, offset);
+      final name = _readObjCClassNameFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        classAddress: classAddress,
+      );
+      if (name == null) continue;
+
+      classes.add(
+        MachOObjCClass(
+          name: name,
+          sourceSection: section.displayName,
+          classAddress: classAddress,
+        ),
+      );
+    }
+  }
+
+  return classes;
+}
+
 List<MachOSectionString> _readSectionStringsFromBytes(
   List<int> bytes, {
   required List<MachOSegment> segments,
@@ -1060,6 +1158,53 @@ List<MachOSectionString> _readSectionStringsFromBytes(
   }
 
   return sectionStrings;
+}
+
+List<MachOObjCClass> _readObjCClassesFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSegment> segments,
+}) {
+  final classes = <MachOObjCClass>[];
+  final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
+  final stringSections = _stringSections(segments).toList();
+
+  for (final section in _objcClassReferenceSections(segments)) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    final sectionBytes = bytes.sublist(
+      section.fileOffset,
+      section.fileOffset + section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final classAddress = is64Bit
+          ? _readU64(sectionBytes, offset)
+          : _readU32(sectionBytes, offset);
+      final name = _readObjCClassNameFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        classAddress: classAddress,
+      );
+      if (name == null) continue;
+
+      classes.add(
+        MachOObjCClass(
+          name: name,
+          sourceSection: section.displayName,
+          classAddress: classAddress,
+        ),
+      );
+    }
+  }
+
+  return classes;
 }
 
 List<MachOObjCSelector> _readObjCSelectorsFromBytes(
@@ -1106,10 +1251,93 @@ List<MachOObjCSelector> _readObjCSelectorsFromBytes(
   return selectors;
 }
 
+String? _readObjCClassNameFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int classAddress,
+}) {
+  final classDataAddress = _readPointerAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    classAddress + (is64Bit ? 32 : 16),
+    is64Bit: is64Bit,
+  );
+  if (classDataAddress == null) return null;
+
+  final classRoAddress = classDataAddress & (is64Bit ? ~0x7 : ~0x3);
+  final nameAddress = _readPointerAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    classRoAddress + (is64Bit ? 24 : 16),
+    is64Bit: is64Bit,
+  );
+  if (nameAddress == null) return null;
+
+  return _readCStringAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    stringSections,
+    nameAddress,
+  );
+}
+
+String? _readObjCClassNameFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int classAddress,
+}) {
+  final classDataAddress = _readPointerAtAddressFromBytes(
+    bytes,
+    allSections,
+    classAddress + (is64Bit ? 32 : 16),
+    is64Bit: is64Bit,
+  );
+  if (classDataAddress == null) return null;
+
+  final classRoAddress = classDataAddress & (is64Bit ? ~0x7 : ~0x3);
+  final nameAddress = _readPointerAtAddressFromBytes(
+    bytes,
+    allSections,
+    classRoAddress + (is64Bit ? 24 : 16),
+    is64Bit: is64Bit,
+  );
+  if (nameAddress == null) return null;
+
+  return _readCStringAtAddressFromBytes(bytes, stringSections, nameAddress);
+}
+
 Iterable<MachOSection> _stringSections(List<MachOSegment> segments) sync* {
   for (final segment in segments) {
     for (final section in segment.sections) {
       if (_isCStringSection(section)) yield section;
+    }
+  }
+}
+
+Iterable<MachOSection> _allSections(List<MachOSegment> segments) sync* {
+  for (final segment in segments) {
+    yield* segment.sections;
+  }
+}
+
+Iterable<MachOSection> _objcClassReferenceSections(
+  List<MachOSegment> segments,
+) sync* {
+  for (final section in _allSections(segments)) {
+    if (section.name == '__objc_classrefs' ||
+        section.name == '__objc_classlist') {
+      yield section;
     }
   }
 }
@@ -1225,6 +1453,47 @@ MachOSection? _sectionContainingAddress(
     }
   }
   return null;
+}
+
+int? _readPointerAtAddressFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength,
+  List<MachOSection> sections,
+  int address, {
+  required bool is64Bit,
+}) {
+  final section = _sectionContainingAddress(sections, address);
+  if (section == null || !_canReadSection(section, availableLength)) {
+    return null;
+  }
+
+  final pointerSize = is64Bit ? 8 : 4;
+  final pointerOffset = section.fileOffset + (address - section.address);
+  if (!_rangeWithin(pointerOffset, pointerSize, availableLength)) return null;
+
+  final bytes = _readRange(raf, fileOffset + pointerOffset, pointerSize);
+  return is64Bit ? _readU64(bytes, 0) : _readU32(bytes, 0);
+}
+
+int? _readPointerAtAddressFromBytes(
+  List<int> bytes,
+  List<MachOSection> sections,
+  int address, {
+  required bool is64Bit,
+}) {
+  final section = _sectionContainingAddress(sections, address);
+  if (section == null || !_canReadSection(section, bytes.length)) {
+    return null;
+  }
+
+  final pointerSize = is64Bit ? 8 : 4;
+  final pointerOffset = section.fileOffset + (address - section.address);
+  if (!_rangeWithin(pointerOffset, pointerSize, bytes.length)) return null;
+
+  return is64Bit
+      ? _readU64(bytes, pointerOffset)
+      : _readU32(bytes, pointerOffset);
 }
 
 List<MachOSymbol> _readSymbolsFromFile(
