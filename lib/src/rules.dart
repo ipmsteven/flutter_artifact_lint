@@ -192,7 +192,8 @@ const ruleRegistry = <String, RuleDefinition>{
     defaultLevel: FindingLevel.info,
     source: RuleSource.artifact,
     title: 'Mach-O dynamic linker',
-    description: 'Reports dynamic linker paths from LC_LOAD_DYLINKER.',
+    description:
+        'Reports dynamic linker paths from LC_LOAD_DYLINKER and LC_ID_DYLINKER.',
     fix: 'No action required.',
   ),
   'ios.macho.dyld_environment': RuleDefinition(

@@ -267,6 +267,7 @@ void main() {
       final result = await _scanAppWithMainBinary(
         _machOBytes([
           _machOPathCommand(0x0e, '/usr/lib/dyld'),
+          _machOPathCommand(0x0f, '/usr/lib/identified-dyld'),
           _machOPathCommand(
             0x27,
             'DYLD_INSERT_LIBRARIES=@executable_path/Inject.dylib',
@@ -274,14 +275,24 @@ void main() {
         ]),
       );
 
-      final dylinkerFinding = result.info.singleWhere(
-        (finding) => finding.ruleId == 'ios.macho.dylinker',
-      );
+      final dylinkerMessages = result.info
+          .where((finding) => finding.ruleId == 'ios.macho.dylinker')
+          .map((finding) => finding.message)
+          .toList();
       final environmentFinding = result.info.singleWhere(
         (finding) => finding.ruleId == 'ios.macho.dyld_environment',
       );
 
-      expect(dylinkerFinding.message, contains('/usr/lib/dyld'));
+      expect(
+        dylinkerMessages,
+        contains(
+          allOf(contains('LC_LOAD_DYLINKER'), contains('/usr/lib/dyld')),
+        ),
+      );
+      expect(
+        dylinkerMessages,
+        contains(allOf(contains('LC_ID_DYLINKER'), contains('identified'))),
+      );
       expect(environmentFinding.message, contains('DYLD_INSERT_LIBRARIES'));
     });
 

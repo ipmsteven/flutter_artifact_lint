@@ -232,9 +232,16 @@ class MachOLinkerOption {
 }
 
 class MachODylinker {
-  const MachODylinker({required this.path});
+  const MachODylinker({required this.command, required this.path});
 
+  final int command;
   final String path;
+
+  String get commandName => switch (command) {
+    _lcLoadDylinker => 'LC_LOAD_DYLINKER',
+    _lcIdDylinker => 'LC_ID_DYLINKER',
+    _ => 'LC 0x${command.toRadixString(16)}',
+  };
 }
 
 class MachODyldEnvironment {
@@ -1635,7 +1642,7 @@ class MachOParser {
         }
       }
 
-      if (command == _lcLoadDylinker && commandSize >= 12) {
+      if (_isDylinkerCommand(command) && commandSize >= 12) {
         final path = _readCommandString(
           bytes,
           commandOffset: offset,
@@ -1644,7 +1651,7 @@ class MachOParser {
           minimumStringOffset: 12,
         );
         if (path != null) {
-          dylinkers.add(MachODylinker(path: path));
+          dylinkers.add(MachODylinker(command: command, path: path));
         }
       }
 
@@ -2045,7 +2052,7 @@ MachOReport _deduplicatedReport(
 
   final byDylinker = <String, MachODylinker>{};
   for (final dylinker in dylinkers) {
-    byDylinker[dylinker.path] = dylinker;
+    byDylinker['${dylinker.command}|${dylinker.path}'] = dylinker;
   }
 
   final byDyldEnvironment = <String, MachODyldEnvironment>{};
@@ -2460,6 +2467,10 @@ bool _isSubCommand(int command) {
     _lcSubClient,
     _lcSubLibrary,
   }.contains(command);
+}
+
+bool _isDylinkerCommand(int command) {
+  return command == _lcLoadDylinker || command == _lcIdDylinker;
 }
 
 bool _isDyldInfoCommand(int command) {
@@ -8452,6 +8463,7 @@ const _lcDysymtab = 0x0b;
 const _lcLoadDylib = 0x0c;
 const _lcIdDylib = 0x0d;
 const _lcLoadDylinker = 0x0e;
+const _lcIdDylinker = 0x0f;
 const _lcRoutines = 0x11;
 const _lcSubFramework = 0x12;
 const _lcSubUmbrella = 0x13;

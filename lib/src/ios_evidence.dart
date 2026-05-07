@@ -226,7 +226,7 @@ class IosEvidenceExtractor {
           MachOMetadataEvidence(
             kind: MachOMetadataKind.dylinker,
             sourcePath: entity.path,
-            value: dylinker.path,
+            value: _dylinkerValue(dylinker),
           ),
         );
       }
@@ -569,6 +569,10 @@ String _noteValue(MachONote note) {
 
 String _linkeditDataValue(MachOLinkeditData data) {
   return '${data.commandName}; offset ${data.dataOffset}; size ${data.dataSize}';
+}
+
+String _dylinkerValue(MachODylinker dylinker) {
+  return '${dylinker.commandName}; ${dylinker.path}';
 }
 
 String _routinesValue(MachORoutines routines) {

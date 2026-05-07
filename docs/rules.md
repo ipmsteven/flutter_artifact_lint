@@ -109,7 +109,8 @@ from `LC_BUILD_VERSION`.
 
 `ios.macho.linker_option` reports linker option strings from `LC_LINKER_OPTION`.
 
-`ios.macho.dylinker` reports dynamic linker paths from `LC_LOAD_DYLINKER`.
+`ios.macho.dylinker` reports dynamic linker paths from `LC_LOAD_DYLINKER` and
+`LC_ID_DYLINKER`.
 
 `ios.macho.dyld_environment` reports dyld environment strings from
 `LC_DYLD_ENVIRONMENT`.

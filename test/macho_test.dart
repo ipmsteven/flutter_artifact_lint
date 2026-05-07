@@ -589,6 +589,7 @@ void main() {
       final report = const MachOParser().parse(
         thinMachO([
           machoPathCommand(0x0e, '/usr/lib/dyld'),
+          machoPathCommand(0x0f, '/usr/lib/identified-dyld'),
           machoPathCommand(
             0x27,
             'DYLD_INSERT_LIBRARIES=@executable_path/Inject.dylib',
@@ -596,7 +597,11 @@ void main() {
         ]),
       );
 
-      expect(report.dylinkers.single.path, '/usr/lib/dyld');
+      expect(report.dylinkers, hasLength(2));
+      expect(report.dylinkers.first.commandName, 'LC_LOAD_DYLINKER');
+      expect(report.dylinkers.first.path, '/usr/lib/dyld');
+      expect(report.dylinkers.last.commandName, 'LC_ID_DYLINKER');
+      expect(report.dylinkers.last.path, '/usr/lib/identified-dyld');
       expect(
         report.dyldEnvironments.single.value,
         'DYLD_INSERT_LIBRARIES=@executable_path/Inject.dylib',
@@ -726,13 +731,21 @@ void main() {
         ..writeAsBytesSync(
           thinMachO([
             machoPathCommand(0x0e, '/usr/lib/dyld'),
+            machoPathCommand(0x0f, '/usr/lib/identified-dyld'),
             machoPathCommand(0x27, 'DYLD_PRINT_STATISTICS=1'),
           ]),
         );
 
       final report = const MachOParser().parseFile(file);
 
-      expect(report.dylinkers.single.path, '/usr/lib/dyld');
+      expect(report.dylinkers.map((dylinker) => dylinker.commandName), [
+        'LC_LOAD_DYLINKER',
+        'LC_ID_DYLINKER',
+      ]);
+      expect(report.dylinkers.map((dylinker) => dylinker.path), [
+        '/usr/lib/dyld',
+        '/usr/lib/identified-dyld',
+      ]);
       expect(report.dyldEnvironments.single.value, 'DYLD_PRINT_STATISTICS=1');
     });
 
