@@ -78,6 +78,8 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 
 `ios.private_api.framework` reports Mach-O load commands that link private Apple frameworks.
 
+`ios.macho.simulator_slice` reports simulator architecture or platform metadata in a release artifact binary.
+
 `ios.dynamic_code_execution.evidence` reports dynamic loading or script execution evidence.
 
 ## Info
@@ -93,6 +95,16 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 `ios.macho.build_version` reports platform, minimum OS, and SDK metadata from `LC_BUILD_VERSION`.
 
 `ios.macho.architecture` reports architecture slices found in Mach-O binaries.
+
+`ios.macho.rpath` reports runtime library search paths from `LC_RPATH`.
+
+`ios.macho.dylib_id` reports dynamic library install names from `LC_ID_DYLIB`.
+
+`ios.macho.uuid` reports binary UUIDs from `LC_UUID`.
+
+`ios.macho.source_version` reports source version metadata from `LC_SOURCE_VERSION`.
+
+`ios.macho.code_signature` reports `LC_CODE_SIGNATURE` offset and size metadata.
 
 `ios.signing.unavailable` reports that signing state is unavailable for an unsigned artifact.
 
@@ -113,6 +125,13 @@ appears only in load-command metadata.
 Mach-O architecture inventory is reported from thin and fat/universal headers.
 Mach-O build metadata is parsed from `LC_BUILD_VERSION` and legacy
 `LC_VERSION_MIN_*` commands to report platform, minimum OS, and SDK version.
+The scanner warns when device release artifacts contain simulator architecture
+or simulator platform metadata.
+
+Additional diagnostic metadata is parsed from `LC_RPATH`, `LC_ID_DYLIB`,
+`LC_UUID`, `LC_SOURCE_VERSION`, and `LC_CODE_SIGNATURE`. `LC_CODE_SIGNATURE`
+currently reports only the linkedit offset and size; it does not validate the
+signature blob or parse embedded entitlements.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or

@@ -178,6 +178,42 @@ void main() {
       expect(report.buildVersions.single.sdkVersion, '18.0.0');
     });
 
+    test('reads diagnostic Mach-O metadata load commands', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoRpathCommand('@executable_path/Frameworks'),
+          machoDylibIdCommand('@rpath/Runner.framework/Runner'),
+          machoUuidCommand([
+            0x00,
+            0x11,
+            0x22,
+            0x33,
+            0x44,
+            0x55,
+            0x66,
+            0x77,
+            0x88,
+            0x99,
+            0xaa,
+            0xbb,
+            0xcc,
+            0xdd,
+            0xee,
+            0xff,
+          ]),
+          machoSourceVersionCommand(sourceVersion(1, 2, 3, 4, 5)),
+          machoCodeSignatureCommand(dataOffset: 4096, dataSize: 512),
+        ]),
+      );
+
+      expect(report.rpaths.single.path, '@executable_path/Frameworks');
+      expect(report.dylibIds.single.path, '@rpath/Runner.framework/Runner');
+      expect(report.uuids.single.value, '00112233-4455-6677-8899-aabbccddeeff');
+      expect(report.sourceVersions.single.version, '1.2.3.4.5');
+      expect(report.codeSignatures.single.dataOffset, 4096);
+      expect(report.codeSignatures.single.dataSize, 512);
+    });
+
     test('ignores non-Mach-O bytes', () {
       final report = const MachOParser().parse(latin1.encode('not a binary'));
 
@@ -282,6 +318,61 @@ List<int> machoVersionMinCommand({
   ];
 }
 
+List<int> machoRpathCommand(String path) => machoPathCommand(0x8000001c, path);
+
+List<int> machoDylibIdCommand(String dylibPath) {
+  final pathBytes = [...latin1.encode(dylibPath), 0];
+  final commandSize = 24 + pathBytes.length;
+  return [
+    ...u32(0x0d), // LC_ID_DYLIB
+    ...u32(commandSize),
+    ...u32(24), // dylib.name offset
+    ...u32(0), // timestamp
+    ...u32(0x00010000), // current version 1.0.0
+    ...u32(0x00010000), // compatibility version 1.0.0
+    ...pathBytes,
+  ];
+}
+
+List<int> machoPathCommand(int command, String path) {
+  final pathBytes = [...latin1.encode(path), 0];
+  final commandSize = 12 + pathBytes.length;
+  return [
+    ...u32(command),
+    ...u32(commandSize),
+    ...u32(12), // path offset
+    ...pathBytes,
+  ];
+}
+
+List<int> machoUuidCommand(List<int> uuid) {
+  return [
+    ...u32(0x1b), // LC_UUID
+    ...u32(24),
+    ...uuid,
+  ];
+}
+
+List<int> machoSourceVersionCommand(int version) {
+  return [
+    ...u32(0x2a), // LC_SOURCE_VERSION
+    ...u32(16),
+    ...u64(version),
+  ];
+}
+
+List<int> machoCodeSignatureCommand({
+  required int dataOffset,
+  required int dataSize,
+}) {
+  return [
+    ...u32(0x1d), // LC_CODE_SIGNATURE
+    ...u32(16),
+    ...u32(dataOffset),
+    ...u32(dataSize),
+  ];
+}
+
 List<int> fatMachO(List<List<int>> slices, {bool fat64 = false}) {
   const headerSize = 8;
   final archSize = fat64 ? 32 : 20;
@@ -317,6 +408,10 @@ List<int> fatMachO(List<List<int>> slices, {bool fat64 = false}) {
   ];
 }
 
+int sourceVersion(int a, int b, int c, int d, int e) {
+  return (a << 40) | (b << 30) | (c << 20) | (d << 10) | e;
+}
+
 List<int> u32(int value) {
   return [
     value & 0xff,
@@ -332,6 +427,19 @@ List<int> u32be(int value) {
     (value >> 16) & 0xff,
     (value >> 8) & 0xff,
     value & 0xff,
+  ];
+}
+
+List<int> u64(int value) {
+  return [
+    value & 0xff,
+    (value >> 8) & 0xff,
+    (value >> 16) & 0xff,
+    (value >> 24) & 0xff,
+    (value >> 32) & 0xff,
+    (value >> 40) & 0xff,
+    (value >> 48) & 0xff,
+    (value >> 56) & 0xff,
   ];
 }
 

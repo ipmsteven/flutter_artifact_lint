@@ -88,6 +88,46 @@ void main() {
     );
   });
 
+  group('Mach-O diagnostic metadata parser acceptance', () {
+    test(
+      'reports rpath dylib id uuid source version and code signature',
+      () async {
+        final result = await _scanAppWithMainBinary(
+          _machOBytes([
+            _machOPathCommand(0x8000001c, '@executable_path/Frameworks'),
+            _machODylibIdCommand('@rpath/Runner.framework/Runner'),
+            _machOUuidCommand([
+              0x00,
+              0x11,
+              0x22,
+              0x33,
+              0x44,
+              0x55,
+              0x66,
+              0x77,
+              0x88,
+              0x99,
+              0xaa,
+              0xbb,
+              0xcc,
+              0xdd,
+              0xee,
+              0xff,
+            ]),
+            _machOSourceVersionCommand(_sourceVersion(1, 2, 3, 4, 5)),
+            _machOCodeSignatureCommand(dataOffset: 4096, dataSize: 512),
+          ]),
+        );
+
+        expect(_ruleIds(result.info), contains('ios.macho.rpath'));
+        expect(_ruleIds(result.info), contains('ios.macho.dylib_id'));
+        expect(_ruleIds(result.info), contains('ios.macho.uuid'));
+        expect(_ruleIds(result.info), contains('ios.macho.source_version'));
+        expect(_ruleIds(result.info), contains('ios.macho.code_signature'));
+      },
+    );
+  });
+
   group('Mach-O architecture parser acceptance', () {
     test(
       'reports architecture inventory from a fat Mach-O main binary',
@@ -106,6 +146,25 @@ void main() {
         expect(finding.message, contains('x86_64'));
       },
     );
+
+    test('warns when a simulator architecture slice is present', () async {
+      final result = await _scanAppWithMainBinary(
+        _fatMachO([
+          _machOHeaderBytes(),
+          _machOHeaderBytes(cpuType: 0x01000007),
+        ]),
+      );
+
+      expect(_ruleIds(result.warned), contains('ios.macho.simulator_slice'));
+    });
+
+    test('warns when simulator platform metadata is present', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBuildVersionBytes(platform: 7),
+      );
+
+      expect(_ruleIds(result.warned), contains('ios.macho.simulator_slice'));
+    });
   });
 
   group('known String Scanner gaps', () {
@@ -188,6 +247,16 @@ List<int> _machOLoadDylibBytes(String dylibPath, {bool weak = false}) {
   ];
 }
 
+List<int> _machOBytes(List<List<int>> commands) {
+  return [
+    ..._machOHeaderBytes(
+      ncmds: commands.length,
+      sizeofcmds: commands.fold(0, (total, command) => total + command.length),
+    ),
+    for (final command in commands) ...command,
+  ];
+}
+
 List<int> _fatMachO(List<List<int>> slices) {
   const headerSize = 8;
   const archSize = 20;
@@ -214,30 +283,73 @@ List<int> _fatMachO(List<List<int>> slices) {
   ];
 }
 
-List<int> _machOBuildVersionBytes() {
+List<int> _machOBuildVersionBytes({int platform = 2}) {
   const commandSize = 24;
   return [
     ..._machOHeaderBytes(sizeofcmds: commandSize),
     0x32, 0x00, 0x00, 0x00, // LC_BUILD_VERSION
     ..._u32(commandSize),
-    0x02, 0x00, 0x00, 0x00, // iOS platform
+    ..._u32(platform),
     0x00, 0x00, 0x0c, 0x00, // minos 12.0.0
     0x00, 0x00, 0x11, 0x00, // sdk 17.0.0
     0x00, 0x00, 0x00, 0x00, // no tools
   ];
 }
 
-List<int> _machOHeaderBytes({int sizeofcmds = 0, int cpuType = 0x0100000c}) {
+List<int> _machOHeaderBytes({
+  int ncmds = 0,
+  int sizeofcmds = 0,
+  int cpuType = 0x0100000c,
+}) {
   return [
     0xcf, 0xfa, 0xed, 0xfe, // MH_MAGIC_64
     ..._u32(cpuType),
     ..._u32(0), // CPU_SUBTYPE_ARM64_ALL
     ..._u32(2), // MH_EXECUTE
-    ..._u32(sizeofcmds == 0 ? 0 : 1), // ncmds
+    ..._u32(ncmds == 0 && sizeofcmds != 0 ? 1 : ncmds),
     ..._u32(sizeofcmds),
     ..._u32(0), // flags
     ..._u32(0), // reserved
   ];
+}
+
+List<int> _machOPathCommand(int command, String path) {
+  final pathBytes = [...latin1.encode(path), 0];
+  final commandSize = 12 + pathBytes.length;
+  return [..._u32(command), ..._u32(commandSize), ..._u32(12), ...pathBytes];
+}
+
+List<int> _machODylibIdCommand(String dylibPath) {
+  final pathBytes = [...latin1.encode(dylibPath), 0];
+  final commandSize = 24 + pathBytes.length;
+  return [
+    ..._u32(0x0d),
+    ..._u32(commandSize),
+    ..._u32(24),
+    ..._u32(0),
+    ..._u32(0x00010000),
+    ..._u32(0x00010000),
+    ...pathBytes,
+  ];
+}
+
+List<int> _machOUuidCommand(List<int> uuid) {
+  return [..._u32(0x1b), ..._u32(24), ...uuid];
+}
+
+List<int> _machOSourceVersionCommand(int version) {
+  return [..._u32(0x2a), ..._u32(16), ..._u64(version)];
+}
+
+List<int> _machOCodeSignatureCommand({
+  required int dataOffset,
+  required int dataSize,
+}) {
+  return [..._u32(0x1d), ..._u32(16), ..._u32(dataOffset), ..._u32(dataSize)];
+}
+
+int _sourceVersion(int a, int b, int c, int d, int e) {
+  return (a << 40) | (b << 30) | (c << 20) | (d << 10) | e;
 }
 
 List<int> _u32(int value) {
@@ -255,6 +367,19 @@ List<int> _u32be(int value) {
     (value >> 16) & 0xff,
     (value >> 8) & 0xff,
     value & 0xff,
+  ];
+}
+
+List<int> _u64(int value) {
+  return [
+    value & 0xff,
+    (value >> 8) & 0xff,
+    (value >> 16) & 0xff,
+    (value >> 24) & 0xff,
+    (value >> 32) & 0xff,
+    (value >> 40) & 0xff,
+    (value >> 48) & 0xff,
+    (value >> 56) & 0xff,
   ];
 }
 

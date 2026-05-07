@@ -436,8 +436,10 @@ List<LintFinding> _binaryEvidenceRules(
   );
   final findings = <LintFinding>[];
 
+  findings.addAll(_machoSimulatorSliceWarnings(evidence));
   findings.addAll(_machoArchitectureInfo(evidence));
   findings.addAll(_machoBuildVersionInfo(evidence));
+  findings.addAll(_machoMetadataInfo(evidence));
 
   void warnMissingPermission({
     required String ruleId,
@@ -723,6 +725,63 @@ List<LintFinding> _machoBuildVersionInfo(EvidenceReport evidence) {
         ),
       )
       .toList();
+}
+
+List<LintFinding> _machoMetadataInfo(EvidenceReport evidence) {
+  return evidence.machOMetadata.map((metadata) {
+    final ruleId = switch (metadata.kind) {
+      MachOMetadataKind.rpath => 'ios.macho.rpath',
+      MachOMetadataKind.dylibId => 'ios.macho.dylib_id',
+      MachOMetadataKind.uuid => 'ios.macho.uuid',
+      MachOMetadataKind.sourceVersion => 'ios.macho.source_version',
+      MachOMetadataKind.codeSignature => 'ios.macho.code_signature',
+    };
+    return buildFinding(
+      ruleId,
+      message: metadata.value,
+      path: metadata.sourcePath,
+      evidence: [metadata.value],
+    );
+  }).toList();
+}
+
+List<LintFinding> _machoSimulatorSliceWarnings(EvidenceReport evidence) {
+  final detectedByPath = <String, Set<String>>{};
+
+  for (final architectureEvidence in evidence.architectures) {
+    final simulatorArchitectures = architectureEvidence.architectures
+        .map((architecture) => architecture.name)
+        .where(_isSimulatorArchitecture)
+        .toList();
+    if (simulatorArchitectures.isEmpty) continue;
+
+    detectedByPath
+        .putIfAbsent(architectureEvidence.sourcePath, () => <String>{})
+        .addAll(simulatorArchitectures);
+  }
+
+  for (final buildVersionEvidence in evidence.buildVersions) {
+    final platformName = buildVersionEvidence.buildVersion.platformName;
+    if (!platformName.contains('Simulator')) continue;
+
+    detectedByPath
+        .putIfAbsent(buildVersionEvidence.sourcePath, () => <String>{})
+        .add(platformName);
+  }
+
+  return detectedByPath.entries.map((entry) {
+    final evidence = entry.value.toList()..sort();
+    return buildFinding(
+      'ios.macho.simulator_slice',
+      message: '${evidence.join(' / ')} detected in a release artifact binary.',
+      path: entry.key,
+      evidence: evidence,
+    );
+  }).toList();
+}
+
+bool _isSimulatorArchitecture(String architecture) {
+  return architecture == 'x86_64' || architecture == 'i386';
 }
 
 const _evidenceTokens = [

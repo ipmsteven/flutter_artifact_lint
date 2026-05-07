@@ -60,14 +60,15 @@ location background mode, and malformed privacy manifest declarations.
 `warned` findings are binary evidence that needs developer confirmation:
 permission APIs without matching purpose strings, notification SDK/API evidence,
 required reason API traces without matching `PrivacyInfo.xcprivacy` categories,
-`UIWebView`, private selector strings, private framework links, and dynamic code
-execution traces.
+`UIWebView`, private selector strings, private framework links, simulator
+Mach-O slices, and dynamic code execution traces.
 JSON output and verbose text output include evidence source paths when binary
 tokens can be traced back to files in the artifact.
 
-`info` findings describe the scanned artifact, bundle identity, version, and
-whether signing data is available. Unsigned Flutter `.app` outputs cannot prove
-final codesign, provisioning profile, or push entitlement state.
+`info` findings describe the scanned artifact, bundle identity, version,
+Mach-O architecture/build/load-command metadata, and whether signing data is
+available. Unsigned Flutter `.app` outputs cannot prove final codesign,
+provisioning profile, or push entitlement state.
 
 App extensions under `PlugIns/*.appex` are scanned as their own bundles for
 permission-purpose checks, so extension evidence is evaluated against the

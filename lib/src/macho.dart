@@ -6,11 +6,21 @@ class MachOReport {
     required this.linkedDylibs,
     this.architectures = const [],
     this.buildVersions = const [],
+    this.rpaths = const [],
+    this.dylibIds = const [],
+    this.uuids = const [],
+    this.sourceVersions = const [],
+    this.codeSignatures = const [],
   });
 
   final List<MachODylib> linkedDylibs;
   final List<MachOArchitecture> architectures;
   final List<MachOBuildVersion> buildVersions;
+  final List<MachORpath> rpaths;
+  final List<MachODylibId> dylibIds;
+  final List<MachOUuid> uuids;
+  final List<MachOSourceVersion> sourceVersions;
+  final List<MachOCodeSignature> codeSignatures;
 }
 
 class MachODylib {
@@ -63,6 +73,37 @@ class MachOBuildVersion {
   };
 }
 
+class MachORpath {
+  const MachORpath({required this.path});
+
+  final String path;
+}
+
+class MachODylibId {
+  const MachODylibId({required this.path});
+
+  final String path;
+}
+
+class MachOUuid {
+  const MachOUuid({required this.value});
+
+  final String value;
+}
+
+class MachOSourceVersion {
+  const MachOSourceVersion({required this.version});
+
+  final String version;
+}
+
+class MachOCodeSignature {
+  const MachOCodeSignature({required this.dataOffset, required this.dataSize});
+
+  final int dataOffset;
+  final int dataSize;
+}
+
 class MachOParser {
   const MachOParser();
 
@@ -88,6 +129,11 @@ class MachOParser {
       thinReport.linkedDylibs,
       thinReport.architectures,
       thinReport.buildVersions,
+      thinReport.rpaths,
+      thinReport.dylibIds,
+      thinReport.uuids,
+      thinReport.sourceVersions,
+      thinReport.codeSignatures,
     );
   }
 
@@ -121,6 +167,11 @@ class MachOParser {
     final linkedDylibs = <MachODylib>[];
     final architectures = <MachOArchitecture>[];
     final buildVersions = <MachOBuildVersion>[];
+    final rpaths = <MachORpath>[];
+    final dylibIds = <MachODylibId>[];
+    final uuids = <MachOUuid>[];
+    final sourceVersions = <MachOSourceVersion>[];
+    final codeSignatures = <MachOCodeSignature>[];
 
     for (
       var offset = 0;
@@ -143,9 +194,23 @@ class MachOParser {
       linkedDylibs.addAll(sliceReport.linkedDylibs);
       architectures.addAll(sliceReport.architectures);
       buildVersions.addAll(sliceReport.buildVersions);
+      rpaths.addAll(sliceReport.rpaths);
+      dylibIds.addAll(sliceReport.dylibIds);
+      uuids.addAll(sliceReport.uuids);
+      sourceVersions.addAll(sliceReport.sourceVersions);
+      codeSignatures.addAll(sliceReport.codeSignatures);
     }
 
-    return _deduplicatedReport(linkedDylibs, architectures, buildVersions);
+    return _deduplicatedReport(
+      linkedDylibs,
+      architectures,
+      buildVersions,
+      rpaths,
+      dylibIds,
+      uuids,
+      sourceVersions,
+      codeSignatures,
+    );
   }
 
   MachOReport _parseThinFileAt(
@@ -203,6 +268,11 @@ class MachOParser {
     final linkedDylibs = <MachODylib>[];
     final architectures = <MachOArchitecture>[];
     final buildVersions = <MachOBuildVersion>[];
+    final rpaths = <MachORpath>[];
+    final dylibIds = <MachODylibId>[];
+    final uuids = <MachOUuid>[];
+    final sourceVersions = <MachOSourceVersion>[];
+    final codeSignatures = <MachOCodeSignature>[];
 
     for (var i = 0; i < architectureCount; i += 1) {
       if (offset + archSize > bytes.length) break;
@@ -222,12 +292,26 @@ class MachOParser {
         linkedDylibs.addAll(sliceReport.linkedDylibs);
         architectures.addAll(sliceReport.architectures);
         buildVersions.addAll(sliceReport.buildVersions);
+        rpaths.addAll(sliceReport.rpaths);
+        dylibIds.addAll(sliceReport.dylibIds);
+        uuids.addAll(sliceReport.uuids);
+        sourceVersions.addAll(sliceReport.sourceVersions);
+        codeSignatures.addAll(sliceReport.codeSignatures);
       }
 
       offset += archSize;
     }
 
-    return _deduplicatedReport(linkedDylibs, architectures, buildVersions);
+    return _deduplicatedReport(
+      linkedDylibs,
+      architectures,
+      buildVersions,
+      rpaths,
+      dylibIds,
+      uuids,
+      sourceVersions,
+      codeSignatures,
+    );
   }
 
   MachOReport _parseThin(List<int> bytes) {
@@ -241,6 +325,11 @@ class MachOParser {
       MachOArchitecture(cpuType: header.cpuType, cpuSubtype: header.cpuSubtype),
     ];
     final buildVersions = <MachOBuildVersion>[];
+    final rpaths = <MachORpath>[];
+    final dylibIds = <MachODylibId>[];
+    final uuids = <MachOUuid>[];
+    final sourceVersions = <MachOSourceVersion>[];
+    final codeSignatures = <MachOCodeSignature>[];
     var offset = header.loadCommandsOffset;
 
     for (var i = 0; i < header.commandCount; i += 1) {
@@ -253,20 +342,48 @@ class MachOParser {
       }
 
       if (_isDylibLoadCommand(command) && commandSize >= 24) {
-        final nameOffset = _readU32(bytes, offset + 8);
-        final nameStart = offset + nameOffset;
-        if (nameOffset >= 24 && nameStart < offset + commandSize) {
-          final path = _readNullTerminatedString(
-            bytes,
-            nameStart,
-            offset + commandSize,
+        final path = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 8,
+          minimumStringOffset: 24,
+        );
+        if (path != null) {
+          linkedDylibs.add(
+            MachODylib(path: path, weak: command == _lcLoadWeakDylib),
           );
-          if (path.isNotEmpty) {
-            linkedDylibs.add(
-              MachODylib(path: path, weak: command == _lcLoadWeakDylib),
-            );
-          }
         }
+      }
+
+      if (command == _lcIdDylib && commandSize >= 24) {
+        final path = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 8,
+          minimumStringOffset: 24,
+        );
+        if (path != null) {
+          dylibIds.add(MachODylibId(path: path));
+        }
+      }
+
+      if (command == _lcRpath && commandSize >= 12) {
+        final path = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 8,
+          minimumStringOffset: 12,
+        );
+        if (path != null) {
+          rpaths.add(MachORpath(path: path));
+        }
+      }
+
+      if (command == _lcUuid && commandSize >= 24) {
+        uuids.add(MachOUuid(value: _uuidString(bytes, offset + 8)));
       }
 
       if (command == _lcBuildVersion && commandSize >= 24) {
@@ -290,6 +407,23 @@ class MachOParser {
         );
       }
 
+      if (command == _lcSourceVersion && commandSize >= 16) {
+        sourceVersions.add(
+          MachOSourceVersion(
+            version: _sourceVersionString(_readU64(bytes, offset + 8)),
+          ),
+        );
+      }
+
+      if (command == _lcCodeSignature && commandSize >= 16) {
+        codeSignatures.add(
+          MachOCodeSignature(
+            dataOffset: _readU32(bytes, offset + 8),
+            dataSize: _readU32(bytes, offset + 12),
+          ),
+        );
+      }
+
       offset += commandSize;
     }
 
@@ -297,6 +431,11 @@ class MachOParser {
       linkedDylibs: linkedDylibs,
       architectures: architectures,
       buildVersions: buildVersions,
+      rpaths: rpaths,
+      dylibIds: dylibIds,
+      uuids: uuids,
+      sourceVersions: sourceVersions,
+      codeSignatures: codeSignatures,
     );
   }
 }
@@ -305,6 +444,11 @@ MachOReport _deduplicatedReport(
   List<MachODylib> dylibs, [
   List<MachOArchitecture> architectures = const [],
   List<MachOBuildVersion> buildVersions = const [],
+  List<MachORpath> rpaths = const [],
+  List<MachODylibId> dylibIds = const [],
+  List<MachOUuid> uuids = const [],
+  List<MachOSourceVersion> sourceVersions = const [],
+  List<MachOCodeSignature> codeSignatures = const [],
 ]) {
   final byPath = <String, MachODylib>{};
   for (final dylib in dylibs) {
@@ -326,10 +470,41 @@ MachOReport _deduplicatedReport(
         buildVersion;
   }
 
+  final byRpath = <String, MachORpath>{};
+  for (final rpath in rpaths) {
+    byRpath[rpath.path] = rpath;
+  }
+
+  final byDylibId = <String, MachODylibId>{};
+  for (final dylibId in dylibIds) {
+    byDylibId[dylibId.path] = dylibId;
+  }
+
+  final byUuid = <String, MachOUuid>{};
+  for (final uuid in uuids) {
+    byUuid[uuid.value] = uuid;
+  }
+
+  final bySourceVersion = <String, MachOSourceVersion>{};
+  for (final sourceVersion in sourceVersions) {
+    bySourceVersion[sourceVersion.version] = sourceVersion;
+  }
+
+  final byCodeSignature = <String, MachOCodeSignature>{};
+  for (final codeSignature in codeSignatures) {
+    byCodeSignature['${codeSignature.dataOffset}|${codeSignature.dataSize}'] =
+        codeSignature;
+  }
+
   return MachOReport(
     linkedDylibs: byPath.values.toList(),
     architectures: byArchitecture.values.toList(),
     buildVersions: byBuildVersion.values.toList(),
+    rpaths: byRpath.values.toList(),
+    dylibIds: byDylibId.values.toList(),
+    uuids: byUuid.values.toList(),
+    sourceVersions: bySourceVersion.values.toList(),
+    codeSignatures: byCodeSignature.values.toList(),
   );
 }
 
@@ -406,12 +581,46 @@ String _readNullTerminatedString(List<int> bytes, int start, int end) {
   return latin1.decode(bytes.sublist(start, cursor), allowInvalid: true);
 }
 
+String? _readCommandString(
+  List<int> bytes, {
+  required int commandOffset,
+  required int commandSize,
+  required int stringOffsetField,
+  required int minimumStringOffset,
+}) {
+  final stringOffset = _readU32(bytes, commandOffset + stringOffsetField);
+  final stringStart = commandOffset + stringOffset;
+  if (stringOffset < minimumStringOffset ||
+      stringStart >= commandOffset + commandSize) {
+    return null;
+  }
+
+  final value = _readNullTerminatedString(
+    bytes,
+    stringStart,
+    commandOffset + commandSize,
+  );
+  return value.isEmpty ? null : value;
+}
+
 int _readU32(List<int> bytes, int offset) {
   if (offset + 4 > bytes.length) return 0;
   return bytes[offset] |
       (bytes[offset + 1] << 8) |
       (bytes[offset + 2] << 16) |
       (bytes[offset + 3] << 24);
+}
+
+int _readU64(List<int> bytes, int offset) {
+  if (offset + 8 > bytes.length) return 0;
+  return bytes[offset] |
+      (bytes[offset + 1] << 8) |
+      (bytes[offset + 2] << 16) |
+      (bytes[offset + 3] << 24) |
+      (bytes[offset + 4] << 32) |
+      (bytes[offset + 5] << 40) |
+      (bytes[offset + 6] << 48) |
+      (bytes[offset + 7] << 56);
 }
 
 int _readU32be(List<int> bytes, int offset) {
@@ -447,6 +656,24 @@ String _versionString(int version) {
   return '$major.$minor.$patch';
 }
 
+String _uuidString(List<int> bytes, int offset) {
+  if (offset + 16 > bytes.length) return '';
+  final hex = bytes
+      .sublist(offset, offset + 16)
+      .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+      .join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+}
+
+String _sourceVersionString(int version) {
+  final a = (version >> 40) & 0xffffff;
+  final b = (version >> 30) & 0x3ff;
+  final c = (version >> 20) & 0x3ff;
+  final d = (version >> 10) & 0x3ff;
+  final e = version & 0x3ff;
+  return '$a.$b.$c.$d.$e';
+}
+
 const _fatMagic = 0xcafebabe;
 const _fatMagic64 = 0xcafebabf;
 const _maxFatArchTableBytes = 64 * 1024;
@@ -454,10 +681,15 @@ const _maxLoadCommandBytes = 8 * 1024 * 1024;
 const _mhMagic = 0xfeedface;
 const _mhMagic64 = 0xfeedfacf;
 const _lcLoadDylib = 0x0c;
+const _lcIdDylib = 0x0d;
 const _lcLoadWeakDylib = 0x80000018;
+const _lcUuid = 0x1b;
+const _lcRpath = 0x8000001c;
+const _lcCodeSignature = 0x1d;
 const _lcReexportDylib = 0x8000001f;
 const _lcLazyLoadDylib = 0x20;
 const _lcLoadUpwardDylib = 0x80000023;
+const _lcSourceVersion = 0x2a;
 const _lcBuildVersion = 0x32;
 const _lcVersionMinMacosx = 0x24;
 const _lcVersionMinIphoneos = 0x25;

@@ -11,6 +11,7 @@ class EvidenceReport {
     required this.scannedFiles,
     required this.architectures,
     required this.buildVersions,
+    required this.machOMetadata,
   });
 
   final Set<String> tokens;
@@ -18,6 +19,7 @@ class EvidenceReport {
   final List<String> scannedFiles;
   final List<MachOArchitectureEvidence> architectures;
   final List<MachOBuildVersionEvidence> buildVersions;
+  final List<MachOMetadataEvidence> machOMetadata;
 
   List<String> matched(List<String> candidates) {
     return candidates.where(tokens.contains).toList();
@@ -54,6 +56,20 @@ class MachOBuildVersionEvidence {
   final MachOBuildVersion buildVersion;
 }
 
+enum MachOMetadataKind { rpath, dylibId, uuid, sourceVersion, codeSignature }
+
+class MachOMetadataEvidence {
+  const MachOMetadataEvidence({
+    required this.kind,
+    required this.sourcePath,
+    required this.value,
+  });
+
+  final MachOMetadataKind kind;
+  final String sourcePath;
+  final String value;
+}
+
 class IosEvidenceExtractor {
   const IosEvidenceExtractor({
     required this.tokens,
@@ -72,6 +88,7 @@ class IosEvidenceExtractor {
     final scannedFiles = <String>[];
     final architectures = <MachOArchitectureEvidence>[];
     final buildVersions = <MachOBuildVersionEvidence>[];
+    final machOMetadata = <MachOMetadataEvidence>[];
 
     void addEvidence(String token, String sourcePath) {
       found.add(token);
@@ -121,6 +138,57 @@ class IosEvidenceExtractor {
         );
       }
 
+      for (final rpath in machoReport.rpaths) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.rpath,
+            sourcePath: entity.path,
+            value: rpath.path,
+          ),
+        );
+      }
+
+      for (final dylibId in machoReport.dylibIds) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.dylibId,
+            sourcePath: entity.path,
+            value: dylibId.path,
+          ),
+        );
+      }
+
+      for (final uuid in machoReport.uuids) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.uuid,
+            sourcePath: entity.path,
+            value: uuid.value,
+          ),
+        );
+      }
+
+      for (final sourceVersion in machoReport.sourceVersions) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.sourceVersion,
+            sourcePath: entity.path,
+            value: sourceVersion.version,
+          ),
+        );
+      }
+
+      for (final codeSignature in machoReport.codeSignatures) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.codeSignature,
+            sourcePath: entity.path,
+            value:
+                'offset ${codeSignature.dataOffset}, size ${codeSignature.dataSize}',
+          ),
+        );
+      }
+
       for (final token in _scanTextTokens(
         entity,
         tokens,
@@ -136,6 +204,7 @@ class IosEvidenceExtractor {
       scannedFiles: scannedFiles,
       architectures: architectures,
       buildVersions: buildVersions,
+      machOMetadata: machOMetadata,
     );
   }
 
