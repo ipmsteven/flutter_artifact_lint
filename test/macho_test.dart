@@ -581,6 +581,17 @@ void main() {
       );
     });
 
+    test('reads LC_NOTE metadata from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachO([machoNoteCommand(owner: 'Swift', offset: 4096, size: 128)]),
+      );
+
+      expect(report.notes, hasLength(1));
+      expect(report.notes.single.owner, 'Swift');
+      expect(report.notes.single.dataOffset, 4096);
+      expect(report.notes.single.dataSize, 128);
+    });
+
     test('reads LC_DATA_IN_CODE entries from the file-backed parser', () {
       final root = Directory.systemTemp.createTempSync('fal_macho_');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -633,6 +644,24 @@ void main() {
 
       expect(report.dylinkers.single.path, '/usr/lib/dyld');
       expect(report.dyldEnvironments.single.value, 'DYLD_PRINT_STATISTICS=1');
+    });
+
+    test('reads LC_NOTE metadata from the file-backed parser', () {
+      final root = Directory.systemTemp.createTempSync('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(
+          thinMachO([
+            machoNoteCommand(owner: 'addrable bits', offset: 8192, size: 64),
+          ]),
+        );
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(report.notes.single.owner, 'addrable bits');
+      expect(report.notes.single.dataOffset, 8192);
+      expect(report.notes.single.dataSize, 64);
     });
 
     test(
@@ -4358,6 +4387,22 @@ List<int> machoLinkerOptionCommand(List<String> values) {
     ...u32(values.length),
     ...strings,
     ...List.filled(commandSize - 12 - strings.length, 0),
+  ];
+}
+
+List<int> machoNoteCommand({
+  required String owner,
+  required int offset,
+  required int size,
+}) {
+  final ownerBytes = latin1.encode(owner).take(16).toList();
+  return [
+    ...u32(0x31),
+    ...u32(40),
+    ...ownerBytes,
+    ...List.filled(16 - ownerBytes.length, 0),
+    ...u64(offset),
+    ...u64(size),
   ];
 }
 

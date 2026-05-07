@@ -65,6 +65,7 @@ enum MachOMetadataKind {
   linkerOption,
   dylinker,
   dyldEnvironment,
+  note,
   codeSignature,
   encryptionInfo,
   entryPoint,
@@ -229,6 +230,16 @@ class IosEvidenceExtractor {
             kind: MachOMetadataKind.dyldEnvironment,
             sourcePath: entity.path,
             value: environment.value,
+          ),
+        );
+      }
+
+      for (final note in machoReport.notes) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.note,
+            sourcePath: entity.path,
+            value: _noteValue(note),
           ),
         );
       }
@@ -473,6 +484,10 @@ String _machoHeaderValue(MachOHeaderInfo header) {
     header.fileTypeName,
     if (flags.isEmpty) 'flags none' else 'flags ${flags.join(', ')}',
   ].join('; ');
+}
+
+String _noteValue(MachONote note) {
+  return 'owner ${note.owner}; offset ${note.dataOffset}; size ${note.dataSize}';
 }
 
 String _chainedFixupsValue(MachOChainedFixups chainedFixup) {

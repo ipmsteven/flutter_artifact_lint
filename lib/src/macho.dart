@@ -14,6 +14,7 @@ class MachOReport {
     this.linkerOptions = const [],
     this.dylinkers = const [],
     this.dyldEnvironments = const [],
+    this.notes = const [],
     this.codeSignatures = const [],
     this.encryptionInfos = const [],
     this.entryPoints = const [],
@@ -53,6 +54,7 @@ class MachOReport {
   final List<MachOLinkerOption> linkerOptions;
   final List<MachODylinker> dylinkers;
   final List<MachODyldEnvironment> dyldEnvironments;
+  final List<MachONote> notes;
   final List<MachOCodeSignature> codeSignatures;
   final List<MachOEncryptionInfo> encryptionInfos;
   final List<MachOEntryPoint> entryPoints;
@@ -225,6 +227,18 @@ class MachODyldEnvironment {
   const MachODyldEnvironment({required this.value});
 
   final String value;
+}
+
+class MachONote {
+  const MachONote({
+    required this.owner,
+    required this.dataOffset,
+    required this.dataSize,
+  });
+
+  final String owner;
+  final int dataOffset;
+  final int dataSize;
 }
 
 class MachOCodeSignature {
@@ -661,6 +675,7 @@ class MachOParser {
       thinReport.linkerOptions,
       thinReport.dylinkers,
       thinReport.dyldEnvironments,
+      thinReport.notes,
       thinReport.codeSignatures,
       thinReport.encryptionInfos,
       thinReport.entryPoints,
@@ -728,6 +743,7 @@ class MachOParser {
     final linkerOptions = <MachOLinkerOption>[];
     final dylinkers = <MachODylinker>[];
     final dyldEnvironments = <MachODyldEnvironment>[];
+    final notes = <MachONote>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -784,6 +800,7 @@ class MachOParser {
       linkerOptions.addAll(sliceReport.linkerOptions);
       dylinkers.addAll(sliceReport.dylinkers);
       dyldEnvironments.addAll(sliceReport.dyldEnvironments);
+      notes.addAll(sliceReport.notes);
       codeSignatures.addAll(sliceReport.codeSignatures);
       encryptionInfos.addAll(sliceReport.encryptionInfos);
       entryPoints.addAll(sliceReport.entryPoints);
@@ -824,6 +841,7 @@ class MachOParser {
       linkerOptions,
       dylinkers,
       dyldEnvironments,
+      notes,
       codeSignatures,
       encryptionInfos,
       entryPoints,
@@ -1056,6 +1074,7 @@ class MachOParser {
       report.linkerOptions,
       report.dylinkers,
       report.dyldEnvironments,
+      report.notes,
       report.codeSignatures,
       report.encryptionInfos,
       report.entryPoints,
@@ -1116,6 +1135,7 @@ class MachOParser {
     final linkerOptions = <MachOLinkerOption>[];
     final dylinkers = <MachODylinker>[];
     final dyldEnvironments = <MachODyldEnvironment>[];
+    final notes = <MachONote>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -1169,6 +1189,7 @@ class MachOParser {
         linkerOptions.addAll(sliceReport.linkerOptions);
         dylinkers.addAll(sliceReport.dylinkers);
         dyldEnvironments.addAll(sliceReport.dyldEnvironments);
+        notes.addAll(sliceReport.notes);
         codeSignatures.addAll(sliceReport.codeSignatures);
         encryptionInfos.addAll(sliceReport.encryptionInfos);
         entryPoints.addAll(sliceReport.entryPoints);
@@ -1212,6 +1233,7 @@ class MachOParser {
       linkerOptions,
       dylinkers,
       dyldEnvironments,
+      notes,
       codeSignatures,
       encryptionInfos,
       entryPoints,
@@ -1266,6 +1288,7 @@ class MachOParser {
     final linkerOptions = <MachOLinkerOption>[];
     final dylinkers = <MachODylinker>[];
     final dyldEnvironments = <MachODyldEnvironment>[];
+    final notes = <MachONote>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -1475,6 +1498,19 @@ class MachOParser {
         }
       }
 
+      if (command == _lcNote && commandSize >= 40) {
+        final owner = _readNullTerminatedString(bytes, offset + 8, offset + 24);
+        if (owner.isNotEmpty) {
+          notes.add(
+            MachONote(
+              owner: owner,
+              dataOffset: _readU64(bytes, offset + 24),
+              dataSize: _readU64(bytes, offset + 32),
+            ),
+          );
+        }
+      }
+
       if (command == _lcCodeSignature && commandSize >= 16) {
         codeSignatures.add(
           MachOCodeSignature(
@@ -1616,6 +1652,7 @@ class MachOParser {
       linkerOptions: linkerOptions,
       dylinkers: dylinkers,
       dyldEnvironments: dyldEnvironments,
+      notes: notes,
       codeSignatures: codeSignatures,
       encryptionInfos: encryptionInfos,
       entryPoints: entryPoints,
@@ -1658,6 +1695,7 @@ MachOReport _deduplicatedReport(
   List<MachOLinkerOption> linkerOptions = const [],
   List<MachODylinker> dylinkers = const [],
   List<MachODyldEnvironment> dyldEnvironments = const [],
+  List<MachONote> notes = const [],
   List<MachOCodeSignature> codeSignatures = const [],
   List<MachOEncryptionInfo> encryptionInfos = const [],
   List<MachOEntryPoint> entryPoints = const [],
@@ -1746,6 +1784,11 @@ MachOReport _deduplicatedReport(
   final byDyldEnvironment = <String, MachODyldEnvironment>{};
   for (final environment in dyldEnvironments) {
     byDyldEnvironment[environment.value] = environment;
+  }
+
+  final byNote = <String, MachONote>{};
+  for (final note in notes) {
+    byNote['${note.owner}|${note.dataOffset}|${note.dataSize}'] = note;
   }
 
   final byCodeSignature = <String, MachOCodeSignature>{};
@@ -1929,6 +1972,7 @@ MachOReport _deduplicatedReport(
     linkerOptions: byLinkerOption.values.toList(),
     dylinkers: byDylinker.values.toList(),
     dyldEnvironments: byDyldEnvironment.values.toList(),
+    notes: byNote.values.toList(),
     codeSignatures: byCodeSignature.values.toList(),
     encryptionInfos: byEncryptionInfo.values.toList(),
     entryPoints: byEntryPoint.values.toList(),
@@ -8094,6 +8138,7 @@ const _lcDataInCode = 0x29;
 const _lcSourceVersion = 0x2a;
 const _lcEncryptionInfo64 = 0x2c;
 const _lcLinkerOption = 0x2d;
+const _lcNote = 0x31;
 const _lcBuildVersion = 0x32;
 const _lcDyldExportsTrie = 0x80000033;
 const _lcDyldChainedFixups = 0x80000034;

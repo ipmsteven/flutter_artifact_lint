@@ -254,6 +254,22 @@ void main() {
       expect(dylinkerFinding.message, contains('/usr/lib/dyld'));
       expect(environmentFinding.message, contains('DYLD_INSERT_LIBRARIES'));
     });
+
+    test('reports LC_NOTE metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([
+          _machONoteCommand(owner: 'Swift', offset: 4096, size: 64),
+        ]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.note',
+      );
+
+      expect(finding.message, contains('Swift'));
+      expect(finding.message, contains('offset 4096'));
+      expect(finding.message, contains('size 64'));
+    });
   });
 
   group('Mach-O architecture parser acceptance', () {
@@ -507,6 +523,22 @@ List<int> _machOLinkerOptionCommand(List<String> values) {
     ..._u32(values.length),
     ...strings,
     ...List.filled(commandSize - 12 - strings.length, 0),
+  ];
+}
+
+List<int> _machONoteCommand({
+  required String owner,
+  required int offset,
+  required int size,
+}) {
+  final ownerBytes = latin1.encode(owner).take(16).toList();
+  return [
+    ..._u32(0x31),
+    ..._u32(40),
+    ...ownerBytes,
+    ...List.filled(16 - ownerBytes.length, 0),
+    ..._u64(offset),
+    ..._u64(size),
   ];
 }
 

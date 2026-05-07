@@ -203,6 +203,14 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports dyld environment strings from LC_DYLD_ENVIRONMENT.',
     fix: 'No action required.',
   ),
+  'ios.macho.note': RuleDefinition(
+    ruleId: 'ios.macho.note',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O note',
+    description: 'Reports arbitrary data regions from LC_NOTE.',
+    fix: 'No action required.',
+  ),
   'ios.macho.code_signature': RuleDefinition(
     ruleId: 'ios.macho.code_signature',
     defaultLevel: FindingLevel.info,
