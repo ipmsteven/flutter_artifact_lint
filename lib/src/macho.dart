@@ -108,11 +108,13 @@ class MachOBuildVersion {
     required this.platform,
     required this.minimumOsVersion,
     required this.sdkVersion,
+    this.tools = const [],
   });
 
   final int platform;
   final String minimumOsVersion;
   final String sdkVersion;
+  final List<MachOBuildToolVersion> tools;
 
   String get platformName => switch (platform) {
     1 => 'macOS',
@@ -128,6 +130,20 @@ class MachOBuildVersion {
     11 => 'visionOS',
     12 => 'visionOS Simulator',
     _ => 'platform $platform',
+  };
+}
+
+class MachOBuildToolVersion {
+  const MachOBuildToolVersion({required this.tool, required this.version});
+
+  final int tool;
+  final String version;
+
+  String get toolName => switch (tool) {
+    1 => 'clang',
+    2 => 'swift',
+    3 => 'ld',
+    _ => 'tool $tool',
   };
 }
 
@@ -1341,6 +1357,11 @@ class MachOParser {
             platform: _readU32(bytes, offset + 8),
             minimumOsVersion: _versionString(_readU32(bytes, offset + 12)),
             sdkVersion: _versionString(_readU32(bytes, offset + 16)),
+            tools: _readBuildToolVersions(
+              bytes,
+              commandOffset: offset,
+              commandSize: commandSize,
+            ),
           ),
         );
       }
@@ -1625,7 +1646,10 @@ MachOReport _deduplicatedReport(
 
   final byBuildVersion = <String, MachOBuildVersion>{};
   for (final buildVersion in buildVersions) {
-    byBuildVersion['${buildVersion.platform}|${buildVersion.minimumOsVersion}|${buildVersion.sdkVersion}'] =
+    final toolsKey = buildVersion.tools
+        .map((tool) => '${tool.tool}:${tool.version}')
+        .join(',');
+    byBuildVersion['${buildVersion.platform}|${buildVersion.minimumOsVersion}|${buildVersion.sdkVersion}|$toolsKey'] =
         buildVersion;
   }
 
@@ -2064,6 +2088,30 @@ List<String> _readLinkerOptionStrings(
   }
 
   return values.length == count ? values : const [];
+}
+
+List<MachOBuildToolVersion> _readBuildToolVersions(
+  List<int> bytes, {
+  required int commandOffset,
+  required int commandSize,
+}) {
+  final count = _readU32(bytes, commandOffset + 20);
+  if (count <= 0 || count > _maxBuildToolVersionCount) return const [];
+
+  final tools = <MachOBuildToolVersion>[];
+  var cursor = commandOffset + 24;
+  final end = commandOffset + commandSize;
+  while (cursor + 8 <= end && tools.length < count) {
+    tools.add(
+      MachOBuildToolVersion(
+        tool: _readU32(bytes, cursor),
+        version: _versionString(_readU32(bytes, cursor + 4)),
+      ),
+    );
+    cursor += 8;
+  }
+
+  return tools.length == count ? tools : const [];
 }
 
 MachOSegment? _parseSegmentCommand(
@@ -7896,6 +7944,7 @@ const _maxDyldExportTrieNodes = 8192;
 const _maxDyldImportCount = 1 << 20;
 const _maxFatArchTableBytes = 64 * 1024;
 const _maxFunctionStartCount = 1 << 20;
+const _maxBuildToolVersionCount = 128;
 const _maxLinkerOptionStringCount = 4096;
 const _maxDyldInfoBytes = 16 * 1024 * 1024;
 const _maxLoadCommandBytes = 8 * 1024 * 1024;

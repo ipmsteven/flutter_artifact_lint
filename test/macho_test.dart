@@ -153,6 +153,28 @@ void main() {
       expect(report.buildVersions.single.sdkVersion, '17.0.0');
     });
 
+    test('reads LC_BUILD_VERSION tool versions', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoBuildVersionCommand(
+            platform: 2,
+            minimumOsVersion: 0x000c0000,
+            sdkVersion: 0x00110000,
+            tools: [
+              (tool: 1, version: 0x000f0000),
+              (tool: 2, version: 0x00050900),
+            ],
+          ),
+        ]),
+      );
+
+      expect(report.buildVersions.single.tools, hasLength(2));
+      expect(report.buildVersions.single.tools.first.toolName, 'clang');
+      expect(report.buildVersions.single.tools.first.version, '15.0.0');
+      expect(report.buildVersions.single.tools.last.toolName, 'swift');
+      expect(report.buildVersions.single.tools.last.version, '5.9.0');
+    });
+
     test('reads legacy LC_VERSION_MIN_IPHONEOS metadata', () {
       final report = const MachOParser().parse(
         thinMachO([
@@ -4688,14 +4710,16 @@ List<int> machoBuildVersionCommand({
   required int platform,
   required int minimumOsVersion,
   required int sdkVersion,
+  List<({int tool, int version})> tools = const [],
 }) {
   return [
     ...u32(0x32), // LC_BUILD_VERSION
-    ...u32(24),
+    ...u32(24 + tools.length * 8),
     ...u32(platform),
     ...u32(minimumOsVersion),
     ...u32(sdkVersion),
-    ...u32(0), // ntools
+    ...u32(tools.length),
+    for (final tool in tools) ...[...u32(tool.tool), ...u32(tool.version)],
   ];
 }
 

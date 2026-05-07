@@ -710,21 +710,25 @@ List<LintFinding> _machoArchitectureInfo(EvidenceReport evidence) {
 }
 
 List<LintFinding> _machoBuildVersionInfo(EvidenceReport evidence) {
-  return evidence.buildVersions
-      .map(
-        (buildVersionEvidence) => buildFinding(
-          'ios.macho.build_version',
-          message:
-              '${buildVersionEvidence.buildVersion.platformName} minimum OS ${buildVersionEvidence.buildVersion.minimumOsVersion}, SDK ${buildVersionEvidence.buildVersion.sdkVersion}.',
-          path: buildVersionEvidence.sourcePath,
-          evidence: [
-            buildVersionEvidence.buildVersion.platformName,
-            buildVersionEvidence.buildVersion.minimumOsVersion,
-            buildVersionEvidence.buildVersion.sdkVersion,
-          ],
-        ),
-      )
-      .toList();
+  return evidence.buildVersions.map((buildVersionEvidence) {
+    final buildVersion = buildVersionEvidence.buildVersion;
+    final tools = buildVersion.tools
+        .map((tool) => '${tool.toolName} ${tool.version}')
+        .toList();
+    final toolSuffix = tools.isEmpty ? '' : ' Tools ${tools.join(', ')}.';
+    return buildFinding(
+      'ios.macho.build_version',
+      message:
+          '${buildVersion.platformName} minimum OS ${buildVersion.minimumOsVersion}, SDK ${buildVersion.sdkVersion}.$toolSuffix',
+      path: buildVersionEvidence.sourcePath,
+      evidence: [
+        buildVersion.platformName,
+        buildVersion.minimumOsVersion,
+        buildVersion.sdkVersion,
+        for (final tool in buildVersion.tools) ...[tool.toolName, tool.version],
+      ],
+    );
+  }).toList();
 }
 
 List<LintFinding> _machoMetadataInfo(EvidenceReport evidence) {

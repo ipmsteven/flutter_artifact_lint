@@ -86,6 +86,19 @@ void main() {
         expect(finding.message, contains('SDK 17.0.0'));
       },
     );
+
+    test('reports LC_BUILD_VERSION tool metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBuildVersionBytes(tools: [(tool: 1, version: 0x000f0000)]),
+      );
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.build_version',
+      );
+
+      expect(finding.message, contains('clang 15.0.0'));
+      expect(finding.evidence, contains('clang'));
+      expect(finding.evidence, contains('15.0.0'));
+    });
   });
 
   group('Mach-O diagnostic metadata parser acceptance', () {
@@ -398,8 +411,11 @@ List<int> _fatMachO(List<List<int>> slices) {
   ];
 }
 
-List<int> _machOBuildVersionBytes({int platform = 2}) {
-  const commandSize = 24;
+List<int> _machOBuildVersionBytes({
+  int platform = 2,
+  List<({int tool, int version})> tools = const [],
+}) {
+  final commandSize = 24 + tools.length * 8;
   return [
     ..._machOHeaderBytes(sizeofcmds: commandSize),
     0x32, 0x00, 0x00, 0x00, // LC_BUILD_VERSION
@@ -407,7 +423,8 @@ List<int> _machOBuildVersionBytes({int platform = 2}) {
     ..._u32(platform),
     0x00, 0x00, 0x0c, 0x00, // minos 12.0.0
     0x00, 0x00, 0x11, 0x00, // sdk 17.0.0
-    0x00, 0x00, 0x00, 0x00, // no tools
+    ..._u32(tools.length),
+    for (final tool in tools) ...[..._u32(tool.tool), ..._u32(tool.version)],
   ];
 }
 

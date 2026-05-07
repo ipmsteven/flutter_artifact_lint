@@ -128,7 +128,7 @@ const ruleRegistry = <String, RuleDefinition>{
     source: RuleSource.artifact,
     title: 'Mach-O build version',
     description:
-        'Reports platform, minimum OS, and SDK metadata from LC_BUILD_VERSION.',
+        'Reports platform, minimum OS, SDK, and tool metadata from LC_BUILD_VERSION.',
     fix: 'No action required.',
   ),
   'ios.macho.architecture': RuleDefinition(

@@ -92,7 +92,8 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 
 `ios.artifact.type` reports the scanned artifact type.
 
-`ios.macho.build_version` reports platform, minimum OS, and SDK metadata from `LC_BUILD_VERSION`.
+`ios.macho.build_version` reports platform, minimum OS, SDK, and tool metadata
+from `LC_BUILD_VERSION`.
 
 `ios.macho.architecture` reports architecture slices found in Mach-O binaries.
 
@@ -143,7 +144,8 @@ appears only in load-command metadata.
 
 Mach-O architecture inventory is reported from thin and fat/universal headers.
 Mach-O build metadata is parsed from `LC_BUILD_VERSION` and legacy
-`LC_VERSION_MIN_*` commands to report platform, minimum OS, and SDK version.
+`LC_VERSION_MIN_*` commands to report platform, minimum OS, SDK version, and
+`LC_BUILD_VERSION` tool entries such as clang, swift, and ld.
 The scanner warns when device release artifacts contain simulator architecture
 or simulator platform metadata.
 
