@@ -18,6 +18,7 @@ class MachOReport {
     this.linkeditData = const [],
     this.targetTriples = const [],
     this.subCommands = const [],
+    this.filesetEntries = const [],
     this.codeSignatures = const [],
     this.encryptionInfos = const [],
     this.entryPoints = const [],
@@ -64,6 +65,7 @@ class MachOReport {
   final List<MachOLinkeditData> linkeditData;
   final List<MachOTargetTriple> targetTriples;
   final List<MachOSubCommand> subCommands;
+  final List<MachOFilesetEntry> filesetEntries;
   final List<MachOCodeSignature> codeSignatures;
   final List<MachOEncryptionInfo> encryptionInfos;
   final List<MachOEntryPoint> entryPoints;
@@ -294,6 +296,18 @@ class MachOSubCommand {
     _lcSubLibrary => 'LC_SUB_LIBRARY',
     _ => 'LC 0x${command.toRadixString(16)}',
   };
+}
+
+class MachOFilesetEntry {
+  const MachOFilesetEntry({
+    required this.entryId,
+    required this.vmAddress,
+    required this.fileOffset,
+  });
+
+  final String entryId;
+  final int vmAddress;
+  final int fileOffset;
 }
 
 class MachOCodeSignature {
@@ -765,6 +779,7 @@ class MachOParser {
       thinReport.linkeditData,
       thinReport.targetTriples,
       thinReport.subCommands,
+      thinReport.filesetEntries,
       thinReport.codeSignatures,
       thinReport.encryptionInfos,
       thinReport.entryPoints,
@@ -839,6 +854,7 @@ class MachOParser {
     final linkeditData = <MachOLinkeditData>[];
     final targetTriples = <MachOTargetTriple>[];
     final subCommands = <MachOSubCommand>[];
+    final filesetEntries = <MachOFilesetEntry>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -902,6 +918,7 @@ class MachOParser {
       linkeditData.addAll(sliceReport.linkeditData);
       targetTriples.addAll(sliceReport.targetTriples);
       subCommands.addAll(sliceReport.subCommands);
+      filesetEntries.addAll(sliceReport.filesetEntries);
       codeSignatures.addAll(sliceReport.codeSignatures);
       encryptionInfos.addAll(sliceReport.encryptionInfos);
       entryPoints.addAll(sliceReport.entryPoints);
@@ -949,6 +966,7 @@ class MachOParser {
       linkeditData,
       targetTriples,
       subCommands,
+      filesetEntries,
       codeSignatures,
       encryptionInfos,
       entryPoints,
@@ -1188,6 +1206,7 @@ class MachOParser {
       report.linkeditData,
       report.targetTriples,
       report.subCommands,
+      report.filesetEntries,
       report.codeSignatures,
       report.encryptionInfos,
       report.entryPoints,
@@ -1255,6 +1274,7 @@ class MachOParser {
     final linkeditData = <MachOLinkeditData>[];
     final targetTriples = <MachOTargetTriple>[];
     final subCommands = <MachOSubCommand>[];
+    final filesetEntries = <MachOFilesetEntry>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -1315,6 +1335,7 @@ class MachOParser {
         linkeditData.addAll(sliceReport.linkeditData);
         targetTriples.addAll(sliceReport.targetTriples);
         subCommands.addAll(sliceReport.subCommands);
+        filesetEntries.addAll(sliceReport.filesetEntries);
         codeSignatures.addAll(sliceReport.codeSignatures);
         encryptionInfos.addAll(sliceReport.encryptionInfos);
         entryPoints.addAll(sliceReport.entryPoints);
@@ -1365,6 +1386,7 @@ class MachOParser {
       linkeditData,
       targetTriples,
       subCommands,
+      filesetEntries,
       codeSignatures,
       encryptionInfos,
       entryPoints,
@@ -1426,6 +1448,7 @@ class MachOParser {
     final linkeditData = <MachOLinkeditData>[];
     final targetTriples = <MachOTargetTriple>[];
     final subCommands = <MachOSubCommand>[];
+    final filesetEntries = <MachOFilesetEntry>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -1687,6 +1710,25 @@ class MachOParser {
         }
       }
 
+      if (command == _lcFilesetEntry && commandSize >= 32) {
+        final entryId = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 24,
+          minimumStringOffset: 32,
+        );
+        if (entryId != null) {
+          filesetEntries.add(
+            MachOFilesetEntry(
+              entryId: entryId,
+              vmAddress: _readU64(bytes, offset + 8),
+              fileOffset: _readU64(bytes, offset + 16),
+            ),
+          );
+        }
+      }
+
       if (command == _lcCodeSignature && commandSize >= 16) {
         codeSignatures.add(
           MachOCodeSignature(
@@ -1867,6 +1909,7 @@ class MachOParser {
       linkeditData: linkeditData,
       targetTriples: targetTriples,
       subCommands: subCommands,
+      filesetEntries: filesetEntries,
       codeSignatures: codeSignatures,
       encryptionInfos: encryptionInfos,
       entryPoints: entryPoints,
@@ -1916,6 +1959,7 @@ MachOReport _deduplicatedReport(
   List<MachOLinkeditData> linkeditData = const [],
   List<MachOTargetTriple> targetTriples = const [],
   List<MachOSubCommand> subCommands = const [],
+  List<MachOFilesetEntry> filesetEntries = const [],
   List<MachOCodeSignature> codeSignatures = const [],
   List<MachOEncryptionInfo> encryptionInfos = const [],
   List<MachOEntryPoint> entryPoints = const [],
@@ -2028,6 +2072,12 @@ MachOReport _deduplicatedReport(
   final bySubCommand = <String, MachOSubCommand>{};
   for (final command in subCommands) {
     bySubCommand['${command.command}|${command.value}'] = command;
+  }
+
+  final byFilesetEntry = <String, MachOFilesetEntry>{};
+  for (final entry in filesetEntries) {
+    byFilesetEntry['${entry.entryId}|${entry.vmAddress}|${entry.fileOffset}'] =
+        entry;
   }
 
   final byCodeSignature = <String, MachOCodeSignature>{};
@@ -2231,6 +2281,7 @@ MachOReport _deduplicatedReport(
     linkeditData: byLinkeditData.values.toList(),
     targetTriples: byTargetTriple.values.toList(),
     subCommands: bySubCommand.values.toList(),
+    filesetEntries: byFilesetEntry.values.toList(),
     codeSignatures: byCodeSignature.values.toList(),
     encryptionInfos: byEncryptionInfo.values.toList(),
     entryPoints: byEntryPoint.values.toList(),
@@ -8434,6 +8485,7 @@ const _lcNote = 0x31;
 const _lcBuildVersion = 0x32;
 const _lcDyldExportsTrie = 0x80000033;
 const _lcDyldChainedFixups = 0x80000034;
+const _lcFilesetEntry = 0x80000035;
 const _lcAtomInfo = 0x36;
 const _lcFunctionVariants = 0x37;
 const _lcFunctionVariantFixups = 0x38;

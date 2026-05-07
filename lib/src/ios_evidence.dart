@@ -69,6 +69,7 @@ enum MachOMetadataKind {
   linkeditData,
   targetTriple,
   subCommand,
+  filesetEntry,
   codeSignature,
   encryptionInfo,
   entryPoint,
@@ -276,6 +277,16 @@ class IosEvidenceExtractor {
             kind: MachOMetadataKind.subCommand,
             sourcePath: entity.path,
             value: '${subCommand.commandName}: ${subCommand.value}',
+          ),
+        );
+      }
+
+      for (final entry in machoReport.filesetEntries) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.filesetEntry,
+            sourcePath: entity.path,
+            value: _filesetEntryValue(entry),
           ),
         );
       }
@@ -574,6 +585,14 @@ String _twolevelHintsValue(MachOTwolevelHints hints) {
 
 String _prebindChecksumValue(MachOPrebindChecksum checksum) {
   return 'checksum ${checksum.checksum}';
+}
+
+String _filesetEntryValue(MachOFilesetEntry entry) {
+  return [
+    entry.entryId,
+    'vm address ${entry.vmAddress}',
+    'file offset ${entry.fileOffset}',
+  ].join('; ');
 }
 
 String _chainedFixupsValue(MachOChainedFixups chainedFixup) {

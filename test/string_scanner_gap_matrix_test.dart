@@ -326,6 +326,26 @@ void main() {
       expect(finding.message, contains('MyClient'));
     });
 
+    test('reports LC_FILESET_ENTRY metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([
+          _machOFilesetEntryCommand(
+            entryId: 'com.apple.dyld',
+            vmAddress: 0x100000000,
+            fileOffset: 4096,
+          ),
+        ]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.fileset_entry',
+      );
+
+      expect(finding.message, contains('com.apple.dyld'));
+      expect(finding.message, contains('vm address 4294967296'));
+      expect(finding.message, contains('file offset 4096'));
+    });
+
     test('reports generic linkedit data metadata', () async {
       final result = await _scanAppWithMainBinary(
         _machOBytes([
@@ -556,6 +576,24 @@ List<int> _machOPathCommand(int command, String path) {
   final pathBytes = [...latin1.encode(path), 0];
   final commandSize = 12 + pathBytes.length;
   return [..._u32(command), ..._u32(commandSize), ..._u32(12), ...pathBytes];
+}
+
+List<int> _machOFilesetEntryCommand({
+  required String entryId,
+  required int vmAddress,
+  required int fileOffset,
+}) {
+  final idBytes = [...latin1.encode(entryId), 0];
+  final commandSize = 32 + idBytes.length;
+  return [
+    ..._u32(0x80000035),
+    ..._u32(commandSize),
+    ..._u64(vmAddress),
+    ..._u64(fileOffset),
+    ..._u32(32),
+    ..._u32(0),
+    ...idBytes,
+  ];
 }
 
 List<int> _machODylibIdCommand(String dylibPath) {

@@ -124,6 +124,9 @@ sizes.
 `ios.macho.sub_command` reports framework and library relationship metadata
 from `LC_SUB_*` load commands.
 
+`ios.macho.fileset_entry` reports entry id, VM address, and file offset metadata
+from `LC_FILESET_ENTRY`.
+
 `ios.macho.code_signature` reports `LC_CODE_SIGNATURE` offset and size metadata.
 
 `ios.macho.encryption_info` reports `LC_ENCRYPTION_INFO` FairPlay encryption

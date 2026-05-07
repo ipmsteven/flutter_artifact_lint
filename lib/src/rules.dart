@@ -236,6 +236,14 @@ const ruleRegistry = <String, RuleDefinition>{
         'Reports LC_SUB_* framework and library relationship metadata.',
     fix: 'No action required.',
   ),
+  'ios.macho.fileset_entry': RuleDefinition(
+    ruleId: 'ios.macho.fileset_entry',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O fileset entry',
+    description: 'Reports LC_FILESET_ENTRY id, VM address, and file offset.',
+    fix: 'No action required.',
+  ),
   'ios.macho.code_signature': RuleDefinition(
     ruleId: 'ios.macho.code_signature',
     defaultLevel: FindingLevel.info,

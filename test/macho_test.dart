@@ -640,6 +640,22 @@ void main() {
       expect(report.subCommands.last.value, 'libobjc');
     });
 
+    test('reads LC_FILESET_ENTRY metadata from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoFilesetEntryCommand(
+            entryId: 'com.apple.dyld',
+            vmAddress: 0x100000000,
+            fileOffset: 4096,
+          ),
+        ]),
+      );
+
+      expect(report.filesetEntries.single.entryId, 'com.apple.dyld');
+      expect(report.filesetEntries.single.vmAddress, 0x100000000);
+      expect(report.filesetEntries.single.fileOffset, 4096);
+    });
+
     test('reads generic linkedit data commands from bytes', () {
       final report = const MachOParser().parse(
         thinMachO([
@@ -766,6 +782,28 @@ void main() {
 
       expect(report.subCommands.single.commandName, 'LC_SUB_UMBRELLA');
       expect(report.subCommands.single.value, 'CoreServices');
+    });
+
+    test('reads LC_FILESET_ENTRY metadata from the file-backed parser', () {
+      final root = Directory.systemTemp.createTempSync('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(
+          thinMachO([
+            machoFilesetEntryCommand(
+              entryId: 'com.apple.kernel',
+              vmAddress: 0x200000000,
+              fileOffset: 8192,
+            ),
+          ]),
+        );
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(report.filesetEntries.single.entryId, 'com.apple.kernel');
+      expect(report.filesetEntries.single.vmAddress, 0x200000000);
+      expect(report.filesetEntries.single.fileOffset, 8192);
     });
 
     test(
@@ -4990,6 +5028,24 @@ List<int> machoPathCommand(int command, String path) {
     ...u32(commandSize),
     ...u32(12), // path offset
     ...pathBytes,
+  ];
+}
+
+List<int> machoFilesetEntryCommand({
+  required String entryId,
+  required int vmAddress,
+  required int fileOffset,
+}) {
+  final idBytes = [...latin1.encode(entryId), 0];
+  final commandSize = 32 + idBytes.length;
+  return [
+    ...u32(0x80000035),
+    ...u32(commandSize),
+    ...u64(vmAddress),
+    ...u64(fileOffset),
+    ...u32(32),
+    ...u32(0),
+    ...idBytes,
   ];
 }
 
