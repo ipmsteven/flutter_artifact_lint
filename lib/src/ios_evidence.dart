@@ -92,11 +92,9 @@ class IosEvidenceExtractor {
       }
 
       if (entity is! File || _shouldSkip(entity.path)) continue;
-      final bytes = _readPrefix(entity);
-      if (bytes.isEmpty) continue;
 
       scannedFiles.add(entity.path);
-      final machoReport = const MachOParser().parse(bytes);
+      final machoReport = const MachOParser().parseFile(entity);
       if (machoReport.architectures.isNotEmpty) {
         architectures.add(
           MachOArchitectureEvidence(
@@ -123,7 +121,11 @@ class IosEvidenceExtractor {
         );
       }
 
-      for (final token in _scanTextTokens(entity, tokens)) {
+      for (final token in _scanTextTokens(
+        entity,
+        tokens,
+        chunkSize: _textChunkSize(maxBytesPerFile),
+      )) {
         addEvidence(token, entity.path);
       }
     }
@@ -135,21 +137,6 @@ class IosEvidenceExtractor {
       architectures: architectures,
       buildVersions: buildVersions,
     );
-  }
-
-  List<int> _readPrefix(File file) {
-    try {
-      final raf = file.openSync();
-      try {
-        final length = raf.lengthSync();
-        final size = length > maxBytesPerFile ? maxBytesPerFile : length;
-        return raf.readSync(size);
-      } finally {
-        raf.closeSync();
-      }
-    } catch (_) {
-      return const [];
-    }
   }
 
   bool _shouldSkip(String path) {
@@ -166,7 +153,16 @@ class IosEvidenceExtractor {
   }
 }
 
-Set<String> _scanTextTokens(File file, List<String> tokens) {
+int _textChunkSize(int maxBytesPerFile) {
+  if (maxBytesPerFile <= 0) return 64 * 1024;
+  return maxBytesPerFile < 64 * 1024 ? maxBytesPerFile : 64 * 1024;
+}
+
+Set<String> _scanTextTokens(
+  File file,
+  List<String> tokens, {
+  required int chunkSize,
+}) {
   if (tokens.isEmpty) return const {};
 
   final found = <String>{};
@@ -180,7 +176,7 @@ Set<String> _scanTextTokens(File file, List<String> tokens) {
     final raf = file.openSync();
     try {
       while (true) {
-        final bytes = raf.readSync(64 * 1024);
+        final bytes = raf.readSync(chunkSize);
         if (bytes.isEmpty) break;
 
         final text = carry + _asciiText(bytes);

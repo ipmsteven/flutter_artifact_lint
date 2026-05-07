@@ -111,8 +111,8 @@ the scanner report system framework evidence even when the framework name
 appears only in load-command metadata.
 
 Mach-O architecture inventory is reported from thin and fat/universal headers.
-Mach-O build metadata is parsed from `LC_BUILD_VERSION` to report platform,
-minimum OS, and SDK version.
+Mach-O build metadata is parsed from `LC_BUILD_VERSION` and legacy
+`LC_VERSION_MIN_*` commands to report platform, minimum OS, and SDK version.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or

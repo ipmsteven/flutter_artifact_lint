@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 class MachOReport {
   const MachOReport({
@@ -65,6 +66,19 @@ class MachOBuildVersion {
 class MachOParser {
   const MachOParser();
 
+  MachOReport parseFile(File file) {
+    try {
+      final raf = file.openSync();
+      try {
+        return _parseRandomAccessFile(raf);
+      } finally {
+        raf.closeSync();
+      }
+    } catch (_) {
+      return const MachOReport(linkedDylibs: []);
+    }
+  }
+
   MachOReport parse(List<int> bytes) {
     final fatReport = _parseFat(bytes);
     if (fatReport != null) return fatReport;
@@ -75,6 +89,99 @@ class MachOParser {
       thinReport.architectures,
       thinReport.buildVersions,
     );
+  }
+
+  MachOReport _parseRandomAccessFile(RandomAccessFile raf) {
+    final fileLength = raf.lengthSync();
+    final prefix = _readRange(raf, 0, fileLength < 8 ? fileLength : 8);
+    if (prefix.length < 8) {
+      return const MachOReport(linkedDylibs: []);
+    }
+
+    final magic = _readU32be(prefix, 0);
+    final fat64 = switch (magic) {
+      _fatMagic => false,
+      _fatMagic64 => true,
+      _ => null,
+    };
+    if (fat64 == null) {
+      return _parseThinFileAt(raf, 0, fileLength);
+    }
+
+    final architectureCount = _readU32be(prefix, 4);
+    final archSize = fat64 ? 32 : 20;
+    final archTableSize = architectureCount * archSize;
+    final archTable = _readRange(
+      raf,
+      8,
+      archTableSize > _maxFatArchTableBytes
+          ? _maxFatArchTableBytes
+          : archTableSize,
+    );
+    final linkedDylibs = <MachODylib>[];
+    final architectures = <MachOArchitecture>[];
+    final buildVersions = <MachOBuildVersion>[];
+
+    for (
+      var offset = 0;
+      offset + archSize <= archTable.length;
+      offset += archSize
+    ) {
+      final sliceOffset = fat64
+          ? _readU64be(archTable, offset + 8)
+          : _readU32be(archTable, offset + 8);
+      final sliceSize = fat64
+          ? _readU64be(archTable, offset + 16)
+          : _readU32be(archTable, offset + 12);
+      if (sliceOffset <= 0 ||
+          sliceSize <= 0 ||
+          sliceOffset + sliceSize > fileLength) {
+        continue;
+      }
+
+      final sliceReport = _parseThinFileAt(raf, sliceOffset, sliceSize);
+      linkedDylibs.addAll(sliceReport.linkedDylibs);
+      architectures.addAll(sliceReport.architectures);
+      buildVersions.addAll(sliceReport.buildVersions);
+    }
+
+    return _deduplicatedReport(linkedDylibs, architectures, buildVersions);
+  }
+
+  MachOReport _parseThinFileAt(
+    RandomAccessFile raf,
+    int fileOffset,
+    int availableLength,
+  ) {
+    final headerPrefix = _readRange(
+      raf,
+      fileOffset,
+      availableLength < 32 ? availableLength : 32,
+    );
+    if (headerPrefix.length < 28) {
+      return const MachOReport(linkedDylibs: []);
+    }
+
+    final magic = _readU32(headerPrefix, 0);
+    final headerSize = switch (magic) {
+      _mhMagic64 => 32,
+      _mhMagic => 28,
+      _ => null,
+    };
+    if (headerSize == null || headerPrefix.length < headerSize) {
+      return const MachOReport(linkedDylibs: []);
+    }
+
+    final sizeofcmds = _readU32(headerPrefix, 20);
+    final commandBytes = sizeofcmds > _maxLoadCommandBytes
+        ? _maxLoadCommandBytes
+        : sizeofcmds;
+    final thinBytes = _readRange(
+      raf,
+      fileOffset,
+      _boundedEnd(headerSize, commandBytes, availableLength),
+    );
+    return _parseThin(thinBytes);
   }
 
   MachOReport? _parseFat(List<int> bytes) {
@@ -172,6 +279,17 @@ class MachOParser {
         );
       }
 
+      final legacyPlatform = _legacyVersionPlatform(command);
+      if (legacyPlatform != null && commandSize >= 16) {
+        buildVersions.add(
+          MachOBuildVersion(
+            platform: legacyPlatform,
+            minimumOsVersion: _versionString(_readU32(bytes, offset + 8)),
+            sdkVersion: _versionString(_readU32(bytes, offset + 12)),
+          ),
+        );
+      }
+
       offset += commandSize;
     }
 
@@ -254,6 +372,12 @@ _MachOHeader? _readHeader(List<int> bytes) {
   );
 }
 
+List<int> _readRange(RandomAccessFile raf, int offset, int length) {
+  if (offset < 0 || length <= 0) return const [];
+  raf.setPositionSync(offset);
+  return raf.readSync(length);
+}
+
 bool _isDylibLoadCommand(int command) {
   return {
     _lcLoadDylib,
@@ -262,6 +386,16 @@ bool _isDylibLoadCommand(int command) {
     _lcLazyLoadDylib,
     _lcLoadUpwardDylib,
   }.contains(command);
+}
+
+int? _legacyVersionPlatform(int command) {
+  return switch (command) {
+    _lcVersionMinMacosx => 1,
+    _lcVersionMinIphoneos => 2,
+    _lcVersionMinTvos => 3,
+    _lcVersionMinWatchos => 4,
+    _ => null,
+  };
 }
 
 String _readNullTerminatedString(List<int> bytes, int start, int end) {
@@ -315,6 +449,8 @@ String _versionString(int version) {
 
 const _fatMagic = 0xcafebabe;
 const _fatMagic64 = 0xcafebabf;
+const _maxFatArchTableBytes = 64 * 1024;
+const _maxLoadCommandBytes = 8 * 1024 * 1024;
 const _mhMagic = 0xfeedface;
 const _mhMagic64 = 0xfeedfacf;
 const _lcLoadDylib = 0x0c;
@@ -323,3 +459,7 @@ const _lcReexportDylib = 0x8000001f;
 const _lcLazyLoadDylib = 0x20;
 const _lcLoadUpwardDylib = 0x80000023;
 const _lcBuildVersion = 0x32;
+const _lcVersionMinMacosx = 0x24;
+const _lcVersionMinIphoneos = 0x25;
+const _lcVersionMinTvos = 0x2f;
+const _lcVersionMinWatchos = 0x30;

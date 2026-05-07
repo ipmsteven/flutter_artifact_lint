@@ -146,6 +146,23 @@ void main() {
       expect(report.buildVersions.single.sdkVersion, '17.0.0');
     });
 
+    test('reads legacy LC_VERSION_MIN_IPHONEOS metadata', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoVersionMinCommand(
+            command: 0x25,
+            minimumOsVersion: 0x000b0200,
+            sdkVersion: 0x000e0400,
+          ),
+        ]),
+      );
+
+      expect(report.buildVersions, hasLength(1));
+      expect(report.buildVersions.single.platformName, 'iOS');
+      expect(report.buildVersions.single.minimumOsVersion, '11.2.0');
+      expect(report.buildVersions.single.sdkVersion, '14.4.0');
+    });
+
     test('deduplicates LC_BUILD_VERSION metadata across fat Mach-O slices', () {
       final slice = thinMachO([
         machoBuildVersionCommand(
@@ -249,6 +266,19 @@ List<int> machoBuildVersionCommand({
     ...u32(minimumOsVersion),
     ...u32(sdkVersion),
     ...u32(0), // ntools
+  ];
+}
+
+List<int> machoVersionMinCommand({
+  required int command,
+  required int minimumOsVersion,
+  required int sdkVersion,
+}) {
+  return [
+    ...u32(command),
+    ...u32(16),
+    ...u32(minimumOsVersion),
+    ...u32(sdkVersion),
   ];
 }
 
