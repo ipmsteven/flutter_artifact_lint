@@ -97,6 +97,7 @@ int main(void) { return 0; }
         containsAll([
           'requestWhenInUseAuthorization',
           'registerWithRegistrar:',
+          'registrar',
           'sharedRegistrar',
         ]),
       );

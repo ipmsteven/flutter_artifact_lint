@@ -824,6 +824,28 @@ void main() {
       },
     );
 
+    test('resolves Objective-C protocol method lists from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCProtocolMethodList(
+          protocolName: 'FlutterPlugin',
+          methodNames: ['registrar', 'registerWithRegistrar:'],
+        ),
+      );
+
+      expect(
+        report.objcMethods.map((method) => method.name),
+        containsAll(['registrar', 'registerWithRegistrar:']),
+      );
+      expect(
+        report.objcMethods.map((method) => method.className),
+        everyElement('FlutterPlugin'),
+      );
+      expect(
+        report.objcMethods.map((method) => method.sourceSection),
+        everyElement('__DATA_CONST.__objc_const'),
+      );
+    });
+
     test('resolves Objective-C method lists from bytes', () {
       final report = const MachOParser().parse(
         thinMachOWithObjCMethodList(
@@ -1968,6 +1990,89 @@ List<int> thinMachOWithObjCClassProtocolList({
     ...protocolData,
     ...protocolListData,
     ...classListData,
+  ];
+}
+
+List<int> thinMachOWithObjCProtocolMethodList({
+  required String protocolName,
+  required List<String> methodNames,
+  int paddingBeforeData = 0,
+}) {
+  final protocolNameAddress = 0x100000100;
+  final methodNameAddress = 0x100000500;
+  final protocolAddress = 0x100001000;
+  final protocolListAddress = 0x100002000;
+  final protocolNameData = cStringBytes([protocolName]);
+  final methodNameData = cStringBytes(methodNames);
+  final methodNameOffsets = stringOffsets(methodNames);
+  final methodListAddress = protocolAddress + 64;
+  final methodListData = objcMethodList64Bytes([
+    for (final methodNameOffset in methodNameOffsets)
+      methodNameAddress + methodNameOffset,
+  ]);
+  final protocolData = objcProtocol64Bytes(
+    protocolNameAddress,
+    instanceMethodsAddress: methodListAddress,
+  );
+  final protocolListData = u64(protocolAddress);
+  final commandsSize = (72 + 2 * 80) + 2 * (72 + 80);
+  final protocolNameOffset = 32 + commandsSize + paddingBeforeData;
+  final methodNameOffset = protocolNameOffset + protocolNameData.length;
+  final protocolOffset = methodNameOffset + methodNameData.length;
+  final methodListOffset = protocolOffset + protocolData.length;
+  final protocolListOffset = methodListOffset + methodListData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: protocolNameAddress,
+      fileOffset: protocolNameOffset,
+      size: protocolNameData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: methodNameAddress,
+      fileOffset: methodNameOffset,
+      size: methodNameData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: protocolAddress,
+      fileOffset: protocolOffset,
+      size: protocolData.length + methodListData.length,
+    ),
+  ]);
+  final protocolListCommand =
+      machoSegment64AddressRangeCommand('__DATA_CONST', [
+        (
+          name: '__objc_protolist',
+          segmentName: '__DATA_CONST',
+          address: protocolListAddress,
+          fileOffset: protocolListOffset,
+          size: protocolListData.length,
+        ),
+      ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 3,
+      sizeofcmds:
+          textCommand.length + constCommand.length + protocolListCommand.length,
+    ),
+    ...textCommand,
+    ...constCommand,
+    ...protocolListCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...protocolNameData,
+    ...methodNameData,
+    ...protocolData,
+    ...methodListData,
+    ...protocolListData,
   ];
 }
 
@@ -3536,6 +3641,10 @@ List<int> objcCategory64Bytes({
 
 List<int> objcProtocol64Bytes(
   int nameAddress, {
+  int instanceMethodsAddress = 0,
+  int classMethodsAddress = 0,
+  int optionalInstanceMethodsAddress = 0,
+  int optionalClassMethodsAddress = 0,
   int instancePropertiesAddress = 0,
   int classPropertiesAddress = 0,
 }) {
@@ -3543,10 +3652,10 @@ List<int> objcProtocol64Bytes(
     ...u64(0), // isa
     ...u64(nameAddress),
     ...u64(0), // protocols
-    ...u64(0), // instance methods
-    ...u64(0), // class methods
-    ...u64(0), // optional instance methods
-    ...u64(0), // optional class methods
+    ...u64(instanceMethodsAddress),
+    ...u64(classMethodsAddress),
+    ...u64(optionalInstanceMethodsAddress),
+    ...u64(optionalClassMethodsAddress),
     ...u64(instancePropertiesAddress), // instance properties
   ];
   if (classPropertiesAddress != 0) {

@@ -2226,6 +2226,52 @@ List<MachOObjCMethod> _readObjCMethodsFromFile(
           );
         }
       }
+      if (metadata.protocolsAddress != 0) {
+        methods.addAll(
+          _readObjCProtocolListMethodsFromFile(
+            raf,
+            fileOffset,
+            availableLength,
+            is64Bit: is64Bit,
+            allSections: allSections,
+            stringSections: stringSections,
+            protocolListAddress: metadata.protocolsAddress,
+          ),
+        );
+      }
+    }
+  }
+
+  for (final section in _objcProtocolReferenceSections(segments)) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    final sectionBytes = _readRange(
+      raf,
+      fileOffset + section.fileOffset,
+      section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final protocolAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
+      methods.addAll(
+        _readObjCProtocolMethodsFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          protocolAddress: protocolAddress,
+        ),
+      );
     }
   }
 
@@ -2270,6 +2316,19 @@ List<MachOObjCMethod> _readObjCMethodsFromFile(
           metadata: metadata,
         ),
       );
+      if (metadata.protocolsAddress != 0) {
+        methods.addAll(
+          _readObjCProtocolListMethodsFromFile(
+            raf,
+            fileOffset,
+            availableLength,
+            is64Bit: is64Bit,
+            allSections: allSections,
+            stringSections: stringSections,
+            protocolListAddress: metadata.protocolsAddress,
+          ),
+        );
+      }
     }
   }
 
@@ -2835,6 +2894,47 @@ List<MachOObjCMethod> _readObjCMethodsFromBytes(
           );
         }
       }
+      if (metadata.protocolsAddress != 0) {
+        methods.addAll(
+          _readObjCProtocolListMethodsFromBytes(
+            bytes,
+            is64Bit: is64Bit,
+            allSections: allSections,
+            stringSections: stringSections,
+            protocolListAddress: metadata.protocolsAddress,
+          ),
+        );
+      }
+    }
+  }
+
+  for (final section in _objcProtocolReferenceSections(segments)) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    final sectionBytes = bytes.sublist(
+      section.fileOffset,
+      section.fileOffset + section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final protocolAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
+      methods.addAll(
+        _readObjCProtocolMethodsFromBytes(
+          bytes,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          protocolAddress: protocolAddress,
+        ),
+      );
     }
   }
 
@@ -2874,6 +2974,17 @@ List<MachOObjCMethod> _readObjCMethodsFromBytes(
           metadata: metadata,
         ),
       );
+      if (metadata.protocolsAddress != 0) {
+        methods.addAll(
+          _readObjCProtocolListMethodsFromBytes(
+            bytes,
+            is64Bit: is64Bit,
+            allSections: allSections,
+            stringSections: stringSections,
+            protocolListAddress: metadata.protocolsAddress,
+          ),
+        );
+      }
     }
   }
 
@@ -3640,6 +3751,198 @@ List<MachOObjCProtocol> _readObjCProtocolListFromBytes(
   }
 
   return protocols;
+}
+
+List<MachOObjCMethod> _readObjCProtocolListMethodsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int protocolListAddress,
+}) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final protocolCount = _readPointerAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    protocolListAddress,
+    is64Bit: is64Bit,
+  );
+  if (protocolCount == null ||
+      !_canReadObjCProtocolList(pointerSize, protocolCount)) {
+    return const [];
+  }
+
+  final methods = <MachOObjCMethod>[];
+  for (var i = 0; i < protocolCount; i += 1) {
+    final entryAddress = protocolListAddress + pointerSize + i * pointerSize;
+    final protocolAddress = _readPointerAtAddressFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      allSections,
+      entryAddress,
+      is64Bit: is64Bit,
+    );
+    if (protocolAddress == null || protocolAddress == 0) continue;
+
+    methods.addAll(
+      _readObjCProtocolMethodsFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        protocolAddress: protocolAddress,
+      ),
+    );
+  }
+
+  return methods;
+}
+
+List<MachOObjCMethod> _readObjCProtocolMethodsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int protocolAddress,
+}) {
+  final protocolName = _readObjCProtocolNameFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    is64Bit: is64Bit,
+    allSections: allSections,
+    stringSections: stringSections,
+    protocolAddress: protocolAddress,
+  );
+  if (protocolName == null) return const [];
+
+  final methods = <MachOObjCMethod>[];
+  for (final methodListOffset
+      in is64Bit ? const [24, 32, 40, 48] : const [12, 16, 20, 24]) {
+    final methodListAddress =
+        _readPointerAtAddressFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          allSections,
+          protocolAddress + methodListOffset,
+          is64Bit: is64Bit,
+        ) ??
+        0;
+    if (methodListAddress == 0) continue;
+
+    methods.addAll(
+      _readObjCMethodListsFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        className: protocolName,
+        methodListAddress: methodListAddress,
+      ),
+    );
+  }
+
+  return methods;
+}
+
+List<MachOObjCMethod> _readObjCProtocolListMethodsFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int protocolListAddress,
+}) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final protocolCount = _readPointerAtAddressFromBytes(
+    bytes,
+    allSections,
+    protocolListAddress,
+    is64Bit: is64Bit,
+  );
+  if (protocolCount == null ||
+      !_canReadObjCProtocolList(pointerSize, protocolCount)) {
+    return const [];
+  }
+
+  final methods = <MachOObjCMethod>[];
+  for (var i = 0; i < protocolCount; i += 1) {
+    final entryAddress = protocolListAddress + pointerSize + i * pointerSize;
+    final protocolAddress = _readPointerAtAddressFromBytes(
+      bytes,
+      allSections,
+      entryAddress,
+      is64Bit: is64Bit,
+    );
+    if (protocolAddress == null || protocolAddress == 0) continue;
+
+    methods.addAll(
+      _readObjCProtocolMethodsFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        protocolAddress: protocolAddress,
+      ),
+    );
+  }
+
+  return methods;
+}
+
+List<MachOObjCMethod> _readObjCProtocolMethodsFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int protocolAddress,
+}) {
+  final protocolName = _readObjCProtocolNameFromBytes(
+    bytes,
+    is64Bit: is64Bit,
+    allSections: allSections,
+    stringSections: stringSections,
+    protocolAddress: protocolAddress,
+  );
+  if (protocolName == null) return const [];
+
+  final methods = <MachOObjCMethod>[];
+  for (final methodListOffset
+      in is64Bit ? const [24, 32, 40, 48] : const [12, 16, 20, 24]) {
+    final methodListAddress =
+        _readPointerAtAddressFromBytes(
+          bytes,
+          allSections,
+          protocolAddress + methodListOffset,
+          is64Bit: is64Bit,
+        ) ??
+        0;
+    if (methodListAddress == 0) continue;
+
+    methods.addAll(
+      _readObjCMethodListsFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        className: protocolName,
+        methodListAddress: methodListAddress,
+      ),
+    );
+  }
+
+  return methods;
 }
 
 List<MachOObjCIvar> _readObjCIvarListFromFile(
