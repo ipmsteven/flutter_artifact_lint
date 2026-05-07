@@ -157,9 +157,10 @@ ranges are available.
 Objective-C class references are resolved from `__objc_classrefs` and
 `__objc_classlist` through `class_t` and `class_ro_t` metadata to class-name
 strings when the relevant sections are present.
-Objective-C protocol references are resolved from `__objc_protolist` and
-`__objc_protorefs` through `protocol_t` metadata to protocol-name strings when
-the relevant sections are present.
+Objective-C protocol references are resolved from `__objc_protolist`,
+`__objc_protorefs`, `class_ro_t.baseProtocols`, and `category_t.protocols`
+through `protocol_t` metadata to protocol-name strings when the relevant
+sections are present.
 Objective-C big and small method lists are resolved from
 `class_ro_t.baseMethods` and local relative method-list lists through
 `method_list_t` entries back to `__objc_methname` strings when the relevant
