@@ -100,9 +100,11 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 remaining cases that the current string scanner intentionally does not cover
 yet. The remaining gap cases are future parser acceptance targets.
 
-Mach-O load-command evidence is parsed for `LC_LOAD_DYLIB` and
-`LC_LOAD_WEAK_DYLIB`. This lets the scanner report system framework evidence
-even when the framework name appears only in load-command metadata.
+Mach-O load-command evidence is parsed for thin and fat/universal binaries. The
+parser currently reads `LC_LOAD_DYLIB`, `LC_LOAD_WEAK_DYLIB`,
+`LC_REEXPORT_DYLIB`, `LC_LOAD_UPWARD_DYLIB`, and `LC_LAZY_LOAD_DYLIB`. This lets
+the scanner report system framework evidence even when the framework name
+appears only in load-command metadata.
 
 Mach-O build metadata is not parsed yet. A future parser can read
 `LC_BUILD_VERSION` to report deployment target, SDK, platform, and architecture

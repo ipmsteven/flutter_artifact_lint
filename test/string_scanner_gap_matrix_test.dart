@@ -55,6 +55,21 @@ void main() {
         );
       },
     );
+
+    test('reports permission evidence from a fat Mach-O main binary', () async {
+      final result = await _scanAppWithMainBinary(
+        _fatMachO([
+          _machOLoadDylibBytes(
+            '/System/Library/Frameworks/Photos.framework/Photos',
+          ),
+        ]),
+      );
+
+      expect(
+        _ruleIds(result.warned),
+        contains('ios.permission.photos.missing'),
+      );
+    });
   });
 
   group('known String Scanner gaps', () {
@@ -138,7 +153,7 @@ List<int> _machOLoadDylibBytes(String dylibPath, {bool weak = false}) {
   final pathBytes = [...latin1.encode(dylibPath), 0];
   final commandSize = 24 + pathBytes.length;
   return [
-    ..._machOHeaderBytes(),
+    ..._machOHeaderBytes(sizeofcmds: commandSize),
     ..._u32(weak ? 0x80000018 : 0x0c),
     ..._u32(commandSize),
     ..._u32(24), // dylib.name offset
@@ -149,11 +164,38 @@ List<int> _machOLoadDylibBytes(String dylibPath, {bool weak = false}) {
   ];
 }
 
-List<int> _machOBuildVersionBytes() {
+List<int> _fatMachO(List<List<int>> slices) {
+  const headerSize = 8;
+  const archSize = 20;
+  var nextOffset = headerSize + archSize * slices.length;
+  final archHeaders = <int>[];
+  final payload = <int>[];
+
+  for (final slice in slices) {
+    archHeaders
+      ..addAll(_u32be(0x0100000c)) // CPU_TYPE_ARM64
+      ..addAll(_u32be(0)) // CPU_SUBTYPE_ARM64_ALL
+      ..addAll(_u32be(nextOffset))
+      ..addAll(_u32be(slice.length))
+      ..addAll(_u32be(0)); // align
+    payload.addAll(slice);
+    nextOffset += slice.length;
+  }
+
   return [
-    ..._machOHeaderBytes(),
+    ..._u32be(0xcafebabe),
+    ..._u32be(slices.length),
+    ...archHeaders,
+    ...payload,
+  ];
+}
+
+List<int> _machOBuildVersionBytes() {
+  const commandSize = 24;
+  return [
+    ..._machOHeaderBytes(sizeofcmds: commandSize),
     0x32, 0x00, 0x00, 0x00, // LC_BUILD_VERSION
-    0x18, 0x00, 0x00, 0x00, // command size
+    ..._u32(commandSize),
     0x02, 0x00, 0x00, 0x00, // iOS platform
     0x00, 0x00, 0x0c, 0x00, // minos 12.0.0
     0x00, 0x00, 0x11, 0x00, // sdk 17.0.0
@@ -161,14 +203,14 @@ List<int> _machOBuildVersionBytes() {
   ];
 }
 
-List<int> _machOHeaderBytes() {
+List<int> _machOHeaderBytes({int sizeofcmds = 0}) {
   return [
     0xcf, 0xfa, 0xed, 0xfe, // MH_MAGIC_64
     ..._u32(0x0100000c), // CPU_TYPE_ARM64
     ..._u32(0), // CPU_SUBTYPE_ARM64_ALL
     ..._u32(2), // MH_EXECUTE
-    ..._u32(1), // ncmds
-    ..._u32(0), // sizeofcmds is not needed by these tests
+    ..._u32(sizeofcmds == 0 ? 0 : 1), // ncmds
+    ..._u32(sizeofcmds),
     ..._u32(0), // flags
     ..._u32(0), // reserved
   ];
@@ -180,6 +222,15 @@ List<int> _u32(int value) {
     (value >> 8) & 0xff,
     (value >> 16) & 0xff,
     (value >> 24) & 0xff,
+  ];
+}
+
+List<int> _u32be(int value) {
+  return [
+    (value >> 24) & 0xff,
+    (value >> 16) & 0xff,
+    (value >> 8) & 0xff,
+    value & 0xff,
   ];
 }
 

@@ -109,7 +109,7 @@ dart test
 Mach-O parser and string-scanner gap matrix:
 
 ```bash
-dart test test/string_scanner_gap_matrix_test.dart
+dart test test/macho_test.dart test/string_scanner_gap_matrix_test.dart
 ```
 
 Real Flutter iOS build E2E test:
