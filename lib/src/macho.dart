@@ -14,6 +14,7 @@ class MachOReport {
     this.segments = const [],
     this.symbolTables = const [],
     this.symbols = const [],
+    this.sectionStrings = const [],
   });
 
   final List<MachODylib> linkedDylibs;
@@ -27,6 +28,7 @@ class MachOReport {
   final List<MachOSegment> segments;
   final List<MachOSymbolTable> symbolTables;
   final List<MachOSymbol> symbols;
+  final List<MachOSectionString> sectionStrings;
 }
 
 class MachODylib {
@@ -120,12 +122,30 @@ class MachOSegment {
 }
 
 class MachOSection {
-  const MachOSection({required this.segmentName, required this.name});
+  const MachOSection({
+    required this.segmentName,
+    required this.name,
+    this.address = 0,
+    this.size = 0,
+    this.fileOffset = 0,
+    this.flags = 0,
+  });
 
   final String segmentName;
   final String name;
+  final int address;
+  final int size;
+  final int fileOffset;
+  final int flags;
 
   String get displayName => '$segmentName.$name';
+}
+
+class MachOSectionString {
+  const MachOSectionString({required this.sectionName, required this.value});
+
+  final String sectionName;
+  final String value;
 }
 
 class MachOSymbolTable {
@@ -191,6 +211,7 @@ class MachOParser {
       thinReport.segments,
       thinReport.symbolTables,
       thinReport.symbols,
+      thinReport.sectionStrings,
     );
   }
 
@@ -232,6 +253,7 @@ class MachOParser {
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
+    final sectionStrings = <MachOSectionString>[];
 
     for (
       var offset = 0;
@@ -262,6 +284,7 @@ class MachOParser {
       segments.addAll(sliceReport.segments);
       symbolTables.addAll(sliceReport.symbolTables);
       symbols.addAll(sliceReport.symbols);
+      sectionStrings.addAll(sliceReport.sectionStrings);
     }
 
     return _deduplicatedReport(
@@ -276,6 +299,7 @@ class MachOParser {
       segments,
       symbolTables,
       symbols,
+      sectionStrings,
     );
   }
 
@@ -325,7 +349,13 @@ class MachOParser {
       is64Bit: is64Bit!,
       symbolTables: report.symbolTables,
     );
-    if (symbols.isEmpty) return report;
+    final sectionStrings = _readSectionStringsFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      segments: report.segments,
+    );
+    if (symbols.isEmpty && sectionStrings.isEmpty) return report;
 
     return _deduplicatedReport(
       report.linkedDylibs,
@@ -339,6 +369,7 @@ class MachOParser {
       report.segments,
       report.symbolTables,
       [...report.symbols, ...symbols],
+      [...report.sectionStrings, ...sectionStrings],
     );
   }
 
@@ -369,6 +400,7 @@ class MachOParser {
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
+    final sectionStrings = <MachOSectionString>[];
 
     for (var i = 0; i < architectureCount; i += 1) {
       if (offset + archSize > bytes.length) break;
@@ -396,6 +428,7 @@ class MachOParser {
         segments.addAll(sliceReport.segments);
         symbolTables.addAll(sliceReport.symbolTables);
         symbols.addAll(sliceReport.symbols);
+        sectionStrings.addAll(sliceReport.sectionStrings);
       }
 
       offset += archSize;
@@ -413,6 +446,7 @@ class MachOParser {
       segments,
       symbolTables,
       symbols,
+      sectionStrings,
     );
   }
 
@@ -559,6 +593,10 @@ class MachOParser {
       is64Bit: header.is64Bit,
       symbolTables: symbolTables,
     );
+    final sectionStrings = _readSectionStringsFromBytes(
+      bytes,
+      segments: segments,
+    );
 
     return MachOReport(
       linkedDylibs: linkedDylibs,
@@ -572,6 +610,7 @@ class MachOParser {
       segments: segments,
       symbolTables: symbolTables,
       symbols: symbols,
+      sectionStrings: sectionStrings,
     );
   }
 }
@@ -588,6 +627,7 @@ MachOReport _deduplicatedReport(
   List<MachOSegment> segments = const [],
   List<MachOSymbolTable> symbolTables = const [],
   List<MachOSymbol> symbols = const [],
+  List<MachOSectionString> sectionStrings = const [],
 ]) {
   final byPath = <String, MachODylib>{};
   for (final dylib in dylibs) {
@@ -658,6 +698,12 @@ MachOReport _deduplicatedReport(
         symbol;
   }
 
+  final bySectionString = <String, MachOSectionString>{};
+  for (final sectionString in sectionStrings) {
+    bySectionString['${sectionString.sectionName}|${sectionString.value}'] =
+        sectionString;
+  }
+
   return MachOReport(
     linkedDylibs: byPath.values.toList(),
     architectures: byArchitecture.values.toList(),
@@ -673,6 +719,7 @@ MachOReport _deduplicatedReport(
     ],
     symbolTables: bySymbolTable.values.toList(),
     symbols: bySymbol.values.toList(),
+    sectionStrings: bySectionString.values.toList(),
   );
 }
 
@@ -806,11 +853,110 @@ MachOSegment? _parseSegmentCommand(
             ? segmentName
             : sectionSegmentName,
         name: sectionName,
+        address: is64Bit
+            ? _readU64(bytes, offset + 32)
+            : _readU32(bytes, offset + 32),
+        size: is64Bit
+            ? _readU64(bytes, offset + 40)
+            : _readU32(bytes, offset + 36),
+        fileOffset: _readU32(bytes, offset + (is64Bit ? 48 : 40)),
+        flags: _readU32(bytes, offset + (is64Bit ? 64 : 56)),
       ),
     );
   }
 
   return MachOSegment(name: segmentName, sections: sections);
+}
+
+List<MachOSectionString> _readSectionStringsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required List<MachOSegment> segments,
+}) {
+  final sectionStrings = <MachOSectionString>[];
+
+  for (final section in _stringSections(segments)) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    sectionStrings.addAll(
+      _parseSectionStrings(
+        section,
+        _readRange(raf, fileOffset + section.fileOffset, section.size),
+      ),
+    );
+  }
+
+  return sectionStrings;
+}
+
+List<MachOSectionString> _readSectionStringsFromBytes(
+  List<int> bytes, {
+  required List<MachOSegment> segments,
+}) {
+  final sectionStrings = <MachOSectionString>[];
+
+  for (final section in _stringSections(segments)) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    sectionStrings.addAll(
+      _parseSectionStrings(
+        section,
+        bytes.sublist(section.fileOffset, section.fileOffset + section.size),
+      ),
+    );
+  }
+
+  return sectionStrings;
+}
+
+Iterable<MachOSection> _stringSections(List<MachOSegment> segments) sync* {
+  for (final segment in segments) {
+    for (final section in segment.sections) {
+      if (_isCStringSection(section)) yield section;
+    }
+  }
+}
+
+bool _canReadSection(MachOSection section, int availableLength) {
+  return section.size > 0 &&
+      section.size <= _maxSectionStringBytes &&
+      _rangeWithin(section.fileOffset, section.size, availableLength);
+}
+
+bool _isCStringSection(MachOSection section) {
+  return {
+    '__cstring',
+    '__objc_methname',
+    '__objc_classname',
+    '__objc_methtype',
+  }.contains(section.name);
+}
+
+List<MachOSectionString> _parseSectionStrings(
+  MachOSection section,
+  List<int> bytes,
+) {
+  final values = <MachOSectionString>[];
+  var start = 0;
+
+  for (var cursor = 0; cursor <= bytes.length; cursor += 1) {
+    if (cursor < bytes.length && bytes[cursor] != 0) continue;
+    if (cursor > start) {
+      values.add(
+        MachOSectionString(
+          sectionName: section.displayName,
+          value: latin1.decode(
+            bytes.sublist(start, cursor),
+            allowInvalid: true,
+          ),
+        ),
+      );
+    }
+    start = cursor + 1;
+  }
+
+  return values;
 }
 
 List<MachOSymbol> _readSymbolsFromFile(
@@ -1050,6 +1196,7 @@ const _fatMagic = 0xcafebabe;
 const _fatMagic64 = 0xcafebabf;
 const _maxFatArchTableBytes = 64 * 1024;
 const _maxLoadCommandBytes = 8 * 1024 * 1024;
+const _maxSectionStringBytes = 4 * 1024 * 1024;
 const _maxStringTableBytes = 16 * 1024 * 1024;
 const _maxSymbolTableBytes = 16 * 1024 * 1024;
 const _mhMagic = 0xfeedface;

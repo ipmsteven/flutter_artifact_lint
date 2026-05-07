@@ -138,6 +138,9 @@ internal parser metadata. They are not emitted as user-facing findings yet, but
 they provide the foundation for future Objective-C and Swift metadata scans.
 Symbol table metadata and symbol names are parsed from `LC_SYMTAB` when the
 symbol and string tables are present in the artifact.
+C-string values are parsed from `__cstring`, `__objc_methname`,
+`__objc_classname`, and `__objc_methtype` sections. These are internal parser
+metadata for more precise future Objective-C evidence rules.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or

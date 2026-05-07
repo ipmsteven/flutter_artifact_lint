@@ -284,6 +284,50 @@ void main() {
       );
     });
 
+    test('reads C strings from Objective-C method sections', () {
+      final report = const MachOParser().parse(
+        thinMachOWithCStringSection(
+          segmentName: '__TEXT',
+          sectionName: '__objc_methname',
+          values: ['requestWhenInUseAuthorization', 'cameraCaptureDidStart:'],
+        ),
+      );
+
+      expect(
+        report.sectionStrings.map((sectionString) => sectionString.value),
+        containsAll([
+          'requestWhenInUseAuthorization',
+          'cameraCaptureDidStart:',
+        ]),
+      );
+      expect(
+        report.sectionStrings.map((sectionString) => sectionString.sectionName),
+        everyElement('__TEXT.__objc_methname'),
+      );
+    });
+
+    test('reads C strings from the file-backed parser', () async {
+      final root = await Directory.systemTemp.createTemp('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(
+          thinMachOWithCStringSection(
+            segmentName: '__TEXT',
+            sectionName: '__cstring',
+            values: ['UNUserNotificationCenter', 'FirebaseMessaging'],
+            paddingBeforeStrings: 4096,
+          ),
+        );
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(
+        report.sectionStrings.map((sectionString) => sectionString.value),
+        containsAll(['UNUserNotificationCenter', 'FirebaseMessaging']),
+      );
+    });
+
     test('ignores non-Mach-O bytes', () {
       final report = const MachOParser().parse(latin1.encode('not a binary'));
 
@@ -352,6 +396,32 @@ List<int> thinMachOWithSymbolTable(
   ];
 }
 
+List<int> thinMachOWithCStringSection({
+  required String segmentName,
+  required String sectionName,
+  required List<String> values,
+  int paddingBeforeStrings = 0,
+}) {
+  final sectionData = cStringBytes(values);
+  final commandSize = 72 + 80;
+  final sectionOffset = 32 + commandSize + paddingBeforeStrings;
+  final command = machoSegment64RangeCommand(segmentName, [
+    (
+      name: sectionName,
+      segmentName: segmentName,
+      fileOffset: sectionOffset,
+      size: sectionData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
+    ...List.filled(paddingBeforeStrings, 0),
+    ...sectionData,
+  ];
+}
+
 List<int> machOHeader64({
   required int ncmds,
   required int sizeofcmds,
@@ -400,6 +470,12 @@ List<int> stringTableBytes(List<String> symbols) {
   return [
     0,
     for (final symbol in symbols) ...[...latin1.encode(symbol), 0],
+  ];
+}
+
+List<int> cStringBytes(List<String> values) {
+  return [
+    for (final value in values) ...[...latin1.encode(value), 0],
   ];
 }
 
@@ -508,6 +584,21 @@ List<int> machoSegment64Command(
   String segmentName,
   List<({String name, String segmentName})> sections,
 ) {
+  return machoSegment64RangeCommand(segmentName, [
+    for (final section in sections)
+      (
+        name: section.name,
+        segmentName: section.segmentName,
+        fileOffset: 0,
+        size: 0,
+      ),
+  ]);
+}
+
+List<int> machoSegment64RangeCommand(
+  String segmentName,
+  List<({String name, String segmentName, int fileOffset, int size})> sections,
+) {
   return [
     ...u32(0x19), // LC_SEGMENT_64
     ...u32(72 + sections.length * 80),
@@ -524,13 +615,15 @@ List<int> machoSegment64Command(
   ];
 }
 
-List<int> section64Bytes(({String name, String segmentName}) section) {
+List<int> section64Bytes(
+  ({String name, String segmentName, int fileOffset, int size}) section,
+) {
   return [
     ...fixedString(section.name, 16),
     ...fixedString(section.segmentName, 16),
     ...u64(0), // addr
-    ...u64(0), // size
-    ...u32(0), // offset
+    ...u64(section.size),
+    ...u32(section.fileOffset),
     ...u32(0), // align
     ...u32(0), // reloff
     ...u32(0), // nreloc
