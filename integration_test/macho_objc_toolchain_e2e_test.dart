@@ -31,6 +31,7 @@ void main() {
       final source = File(p.join(tempDir.path, 'main.m'))
         ..writeAsStringSync('''
 @protocol FlutterPlugin
+@property(class, nonatomic, readonly) id sharedRegistrar;
 @property(nonatomic, readonly) id registrar;
 - (void)registerWithRegistrar:(id)registrar;
 @end
@@ -48,15 +49,18 @@ __attribute__((objc_root_class))
 
 @implementation RunnerViewController
 @synthesize locationManager = _locationManager;
++ (id)sharedRegistrar { return 0; }
 - (void)requestWhenInUseAuthorization {}
 - (void)registerWithRegistrar:(id)registrar {}
 @end
 
 @interface RunnerViewController (Notifications)
+@property(class, nonatomic, readonly) id notificationCenter;
 @property(nonatomic, assign) id notificationDelegate;
 @end
 
 @implementation RunnerViewController (Notifications)
+@dynamic notificationCenter;
 @dynamic notificationDelegate;
 @end
 
@@ -112,7 +116,13 @@ int main(void) { return 0; }
       );
       expect(
         report.objcProperties.map((property) => property.name),
-        containsAll(['locationManager', 'registrar', 'notificationDelegate']),
+        containsAll([
+          'locationManager',
+          'registrar',
+          'sharedRegistrar',
+          'notificationCenter',
+          'notificationDelegate',
+        ]),
       );
       expect(
         report.objcProperties.map((property) => property.attributes),

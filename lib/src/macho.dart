@@ -1499,6 +1499,7 @@ class _ObjCCategoryMetadata {
     required this.classMethodsAddress,
     required this.protocolsAddress,
     required this.instancePropertiesAddress,
+    required this.classPropertiesAddress,
   });
 
   final String ownerName;
@@ -1506,6 +1507,7 @@ class _ObjCCategoryMetadata {
   final int classMethodsAddress;
   final int protocolsAddress;
   final int instancePropertiesAddress;
+  final int classPropertiesAddress;
 }
 
 class _ObjCMethodListLayout {
@@ -2352,6 +2354,42 @@ List<MachOObjCProperty> _readObjCPropertiesFromFile(
           ),
         );
       }
+      final metaclassAddress = _readPointerAtAddressFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        classAddress,
+        is64Bit: is64Bit,
+      );
+      if (metaclassAddress != null &&
+          metaclassAddress != 0 &&
+          metaclassAddress != classAddress) {
+        final metaclassMetadata = _readObjCClassMetadataFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          classAddress: metaclassAddress,
+        );
+        if (metaclassMetadata != null &&
+            metaclassMetadata.basePropertiesAddress != 0) {
+          properties.addAll(
+            _readObjCPropertyListFromFile(
+              raf,
+              fileOffset,
+              availableLength,
+              is64Bit: is64Bit,
+              allSections: allSections,
+              stringSections: stringSections,
+              className: metadata.name,
+              propertyListAddress: metaclassMetadata.basePropertiesAddress,
+            ),
+          );
+        }
+      }
       if (metadata.protocolsAddress != 0) {
         properties.addAll(
           _readObjCProtocolListPropertiesFromFile(
@@ -2442,6 +2480,20 @@ List<MachOObjCProperty> _readObjCPropertiesFromFile(
             stringSections: stringSections,
             className: metadata.ownerName,
             propertyListAddress: metadata.instancePropertiesAddress,
+          ),
+        );
+      }
+      if (metadata.classPropertiesAddress != 0) {
+        properties.addAll(
+          _readObjCPropertyListFromFile(
+            raf,
+            fileOffset,
+            availableLength,
+            is64Bit: is64Bit,
+            allSections: allSections,
+            stringSections: stringSections,
+            className: metadata.ownerName,
+            propertyListAddress: metadata.classPropertiesAddress,
           ),
         );
       }
@@ -2860,6 +2912,36 @@ List<MachOObjCProperty> _readObjCPropertiesFromBytes(
           ),
         );
       }
+      final metaclassAddress = _readPointerAtAddressFromBytes(
+        bytes,
+        allSections,
+        classAddress,
+        is64Bit: is64Bit,
+      );
+      if (metaclassAddress != null &&
+          metaclassAddress != 0 &&
+          metaclassAddress != classAddress) {
+        final metaclassMetadata = _readObjCClassMetadataFromBytes(
+          bytes,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          classAddress: metaclassAddress,
+        );
+        if (metaclassMetadata != null &&
+            metaclassMetadata.basePropertiesAddress != 0) {
+          properties.addAll(
+            _readObjCPropertyListFromBytes(
+              bytes,
+              is64Bit: is64Bit,
+              allSections: allSections,
+              stringSections: stringSections,
+              className: metadata.name,
+              propertyListAddress: metaclassMetadata.basePropertiesAddress,
+            ),
+          );
+        }
+      }
       if (metadata.protocolsAddress != 0) {
         properties.addAll(
           _readObjCProtocolListPropertiesFromBytes(
@@ -2940,6 +3022,18 @@ List<MachOObjCProperty> _readObjCPropertiesFromBytes(
             stringSections: stringSections,
             className: metadata.ownerName,
             propertyListAddress: metadata.instancePropertiesAddress,
+          ),
+        );
+      }
+      if (metadata.classPropertiesAddress != 0) {
+        properties.addAll(
+          _readObjCPropertyListFromBytes(
+            bytes,
+            is64Bit: is64Bit,
+            allSections: allSections,
+            stringSections: stringSections,
+            className: metadata.ownerName,
+            propertyListAddress: metadata.classPropertiesAddress,
           ),
         );
       }
@@ -3787,7 +3881,7 @@ List<MachOObjCProperty> _readObjCProtocolPropertiesFromFile(
   );
   if (protocolName == null) return const [];
 
-  final propertyListAddress = _readPointerAtAddressFromFile(
+  final instancePropertyListAddress = _readPointerAtAddressFromFile(
     raf,
     fileOffset,
     availableLength,
@@ -3795,20 +3889,72 @@ List<MachOObjCProperty> _readObjCProtocolPropertiesFromFile(
     protocolAddress + (is64Bit ? 56 : 28),
     is64Bit: is64Bit,
   );
-  if (propertyListAddress == null || propertyListAddress == 0) {
-    return const [];
-  }
-
-  return _readObjCPropertyListFromFile(
+  final classPropertyListAddress = _readObjCProtocolClassPropertiesFromFile(
     raf,
     fileOffset,
     availableLength,
     is64Bit: is64Bit,
     allSections: allSections,
-    stringSections: stringSections,
-    className: protocolName,
-    propertyListAddress: propertyListAddress,
+    protocolAddress: protocolAddress,
   );
+
+  final propertyListAddresses = [
+    if (instancePropertyListAddress != null && instancePropertyListAddress != 0)
+      instancePropertyListAddress,
+    if (classPropertyListAddress != 0) classPropertyListAddress,
+  ];
+  if (propertyListAddresses.isEmpty) {
+    return const [];
+  }
+
+  return [
+    for (final propertyListAddress in propertyListAddresses)
+      ..._readObjCPropertyListFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        className: protocolName,
+        propertyListAddress: propertyListAddress,
+      ),
+  ];
+}
+
+int _readObjCProtocolClassPropertiesFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required int protocolAddress,
+}) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final sizeOffset = is64Bit ? 64 : 32;
+  final classPropertiesOffset = is64Bit ? 88 : 48;
+  final sizeBytes = _readBytesAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    protocolAddress + sizeOffset,
+    4,
+  );
+  if (sizeBytes == null) return 0;
+
+  final protocolSize = _readU32(sizeBytes, 0);
+  if (protocolSize < classPropertiesOffset + pointerSize) return 0;
+
+  return _readPointerAtAddressFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        protocolAddress + classPropertiesOffset,
+        is64Bit: is64Bit,
+      ) ??
+      0;
 }
 
 List<MachOObjCProperty> _readObjCPropertyListFromBytes(
@@ -3942,24 +4088,68 @@ List<MachOObjCProperty> _readObjCProtocolPropertiesFromBytes(
   );
   if (protocolName == null) return const [];
 
-  final propertyListAddress = _readPointerAtAddressFromBytes(
+  final instancePropertyListAddress = _readPointerAtAddressFromBytes(
     bytes,
     allSections,
     protocolAddress + (is64Bit ? 56 : 28),
     is64Bit: is64Bit,
   );
-  if (propertyListAddress == null || propertyListAddress == 0) {
-    return const [];
-  }
-
-  return _readObjCPropertyListFromBytes(
+  final classPropertyListAddress = _readObjCProtocolClassPropertiesFromBytes(
     bytes,
     is64Bit: is64Bit,
     allSections: allSections,
-    stringSections: stringSections,
-    className: protocolName,
-    propertyListAddress: propertyListAddress,
+    protocolAddress: protocolAddress,
   );
+
+  final propertyListAddresses = [
+    if (instancePropertyListAddress != null && instancePropertyListAddress != 0)
+      instancePropertyListAddress,
+    if (classPropertyListAddress != 0) classPropertyListAddress,
+  ];
+  if (propertyListAddresses.isEmpty) {
+    return const [];
+  }
+
+  return [
+    for (final propertyListAddress in propertyListAddresses)
+      ..._readObjCPropertyListFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        className: protocolName,
+        propertyListAddress: propertyListAddress,
+      ),
+  ];
+}
+
+int _readObjCProtocolClassPropertiesFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required int protocolAddress,
+}) {
+  final pointerSize = is64Bit ? 8 : 4;
+  final sizeOffset = is64Bit ? 64 : 32;
+  final classPropertiesOffset = is64Bit ? 88 : 48;
+  final sizeBytes = _readBytesAtAddressFromBytes(
+    bytes,
+    allSections,
+    protocolAddress + sizeOffset,
+    4,
+  );
+  if (sizeBytes == null) return 0;
+
+  final protocolSize = _readU32(sizeBytes, 0);
+  if (protocolSize < classPropertiesOffset + pointerSize) return 0;
+
+  return _readPointerAtAddressFromBytes(
+        bytes,
+        allSections,
+        protocolAddress + classPropertiesOffset,
+        is64Bit: is64Bit,
+      ) ??
+      0;
 }
 
 _ObjCClassMetadata? _readObjCClassMetadataFromBytes(
@@ -4125,6 +4315,16 @@ _ObjCCategoryMetadata? _readObjCCategoryMetadataFromFile(
           is64Bit: is64Bit,
         ) ??
         0,
+    classPropertiesAddress:
+        _readPointerAtAddressFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          allSections,
+          categoryAddress + 6 * pointerSize,
+          is64Bit: is64Bit,
+        ) ??
+        0,
   );
 }
 
@@ -4196,6 +4396,14 @@ _ObjCCategoryMetadata? _readObjCCategoryMetadataFromBytes(
           bytes,
           allSections,
           categoryAddress + 5 * pointerSize,
+          is64Bit: is64Bit,
+        ) ??
+        0,
+    classPropertiesAddress:
+        _readPointerAtAddressFromBytes(
+          bytes,
+          allSections,
+          categoryAddress + 6 * pointerSize,
           is64Bit: is64Bit,
         ) ??
         0,
