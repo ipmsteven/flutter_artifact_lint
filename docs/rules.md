@@ -188,9 +188,10 @@ direct and inherited `protocol_t.instanceProperties`, and
 that reference Objective-C classes.
 Objective-C category instance and class method lists are resolved from
 `__objc_catlist` and `__objc_nlcatlist` through `category_t` metadata.
-For modern arm64 Mach-O binaries, Objective-C metadata pointers encoded as
-dyld chained 64-bit offset pointers are normalized back to section virtual
-addresses when the target section is present.
+For modern arm64 and arm64e Mach-O binaries, Objective-C metadata pointers
+encoded as dyld chained 64-bit offset pointers or arm64e authenticated rebase
+pointers are normalized back to section virtual addresses when the target
+section is present.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or

@@ -6047,11 +6047,43 @@ int _normalizedPointerValue(
   final imageBase = _imageBaseAddress(sections);
   if (imageBase == null) return raw;
 
-  final offsetTarget = raw & _dyldChainedPointer64TargetMask;
-  final candidate = imageBase + offsetTarget;
-  return _sectionContainingAddress(sections, candidate) == null
-      ? raw
-      : candidate;
+  final isArm64eAuthRebase =
+      (raw & _dyldChainedPointerArm64eAuthBit) != 0 &&
+      (raw & _dyldChainedPointerArm64eBindBit) == 0;
+  if (isArm64eAuthRebase) {
+    final candidate = _normalizedPointerCandidate(
+      raw & _dyldChainedPointerArm64eAuthTargetMask,
+      sections,
+      imageBase,
+    );
+    if (candidate != null) return candidate;
+  }
+
+  return _normalizedPointerCandidate(
+        raw & _dyldChainedPointer64TargetMask,
+        sections,
+        imageBase,
+      ) ??
+      _normalizedPointerCandidate(
+        raw & _dyldChainedPointerArm64eTargetMask,
+        sections,
+        imageBase,
+      ) ??
+      raw;
+}
+
+int? _normalizedPointerCandidate(
+  int target,
+  List<MachOSection> sections,
+  int imageBase,
+) {
+  if (target == 0) return null;
+  if (_sectionContainingAddress(sections, target) != null) return target;
+
+  final offsetCandidate = imageBase + target;
+  return _sectionContainingAddress(sections, offsetCandidate) == null
+      ? null
+      : offsetCandidate;
 }
 
 int? _imageBaseAddress(List<MachOSection> sections) {
@@ -6961,6 +6993,10 @@ const _objcRelativeMethodListsFlag = 0x1;
 const _objcSmallMethodListFlag = 0x80000000;
 const _swiftFieldDescriptorHeaderBytes = 16;
 const _swiftFieldRecordMinimumBytes = 12;
+const _dyldChainedPointerArm64eAuthBit = 1 << 63;
+const _dyldChainedPointerArm64eBindBit = 1 << 62;
+const _dyldChainedPointerArm64eAuthTargetMask = 0xffffffff;
+const _dyldChainedPointerArm64eTargetMask = (1 << 43) - 1;
 const _dyldChainedPointer64TargetMask = 0x0000000fffffffff;
 const _machOPageSize = 0x4000;
 const _maxSwiftFieldCount = 8192;

@@ -717,6 +717,23 @@ void main() {
     });
 
     test(
+      'resolves authenticated chained Objective-C selector pointers from bytes',
+      () {
+        final report = const MachOParser().parse(
+          thinMachOWithObjCSelectorRefs([
+            'requestWhenInUseAuthorization',
+            'setDelegate:',
+          ], authenticatedChainedPointers: true),
+        );
+
+        expect(
+          report.objcSelectors.map((selector) => selector.name),
+          containsAll(['requestWhenInUseAuthorization', 'setDelegate:']),
+        );
+      },
+    );
+
+    test(
       'resolves Objective-C selector references from the file-backed parser',
       () async {
         final root = await Directory.systemTemp.createTemp('fal_macho_');
@@ -728,6 +745,36 @@ void main() {
               'requestAuthorizationWithOptions:completionHandler:',
               'authorizationStatus',
             ], paddingBeforeData: 4096),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(
+          report.objcSelectors.map((selector) => selector.name),
+          containsAll([
+            'requestAuthorizationWithOptions:completionHandler:',
+            'authorizationStatus',
+          ]),
+        );
+      },
+    );
+
+    test(
+      'resolves authenticated chained Objective-C selector pointers from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithObjCSelectorRefs(
+              [
+                'requestAuthorizationWithOptions:completionHandler:',
+                'authorizationStatus',
+              ],
+              paddingBeforeData: 4096,
+              authenticatedChainedPointers: true,
+            ),
           );
 
         final report = const MachOParser().parseFile(file);
@@ -1791,6 +1838,7 @@ List<int> thinMachOWithObjCSelectorRefs(
   List<String> selectors, {
   int paddingBeforeData = 0,
   bool chainedPointers = false,
+  bool authenticatedChainedPointers = false,
 }) {
   final methnameAddress = 0x100000100;
   final selrefsAddress = 0x100000800;
@@ -1799,7 +1847,11 @@ List<int> thinMachOWithObjCSelectorRefs(
   final pointerData = [
     for (final selectorOffset in selectorOffsets)
       ...u64(
-        chainedPointers
+        authenticatedChainedPointers
+            ? chainedPointerArm64eAuthRebaseOffset(
+                methnameAddress + selectorOffset,
+              )
+            : chainedPointers
             ? chainedPointer64Offset(methnameAddress + selectorOffset)
             : methnameAddress + selectorOffset,
       ),
@@ -1841,6 +1893,15 @@ List<int> thinMachOWithObjCSelectorRefs(
 
 int chainedPointer64Offset(int address, {int imageBase = 0x100000000}) {
   return 0x0010000000000000 | (address - imageBase);
+}
+
+int chainedPointerArm64eAuthRebaseOffset(
+  int address, {
+  int imageBase = 0x100000000,
+}) {
+  const diversity = 0x1234;
+  const authBit = 1 << 63;
+  return authBit | (diversity << 32) | (address - imageBase);
 }
 
 List<int> thinMachOWithObjCClassRef(
