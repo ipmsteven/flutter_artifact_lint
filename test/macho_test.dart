@@ -592,6 +592,14 @@ void main() {
       expect(report.notes.single.dataSize, 128);
     });
 
+    test('reads LC_TARGET_TRIPLE metadata from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachO([machoPathCommand(0x39, 'arm64e-apple-ios17.0')]),
+      );
+
+      expect(report.targetTriples.single.value, 'arm64e-apple-ios17.0');
+    });
+
     test('reads generic linkedit data commands from bytes', () {
       final report = const MachOParser().parse(
         thinMachO([
@@ -688,6 +696,23 @@ void main() {
       expect(report.notes.single.owner, 'addrable bits');
       expect(report.notes.single.dataOffset, 8192);
       expect(report.notes.single.dataSize, 64);
+    });
+
+    test('reads LC_TARGET_TRIPLE metadata from the file-backed parser', () {
+      final root = Directory.systemTemp.createTempSync('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(
+          thinMachO([machoPathCommand(0x39, 'arm64-apple-ios17.0-simulator')]),
+        );
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(
+        report.targetTriples.single.value,
+        'arm64-apple-ios17.0-simulator',
+      );
     });
 
     test(

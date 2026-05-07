@@ -16,6 +16,7 @@ class MachOReport {
     this.dyldEnvironments = const [],
     this.notes = const [],
     this.linkeditData = const [],
+    this.targetTriples = const [],
     this.codeSignatures = const [],
     this.encryptionInfos = const [],
     this.entryPoints = const [],
@@ -57,6 +58,7 @@ class MachOReport {
   final List<MachODyldEnvironment> dyldEnvironments;
   final List<MachONote> notes;
   final List<MachOLinkeditData> linkeditData;
+  final List<MachOTargetTriple> targetTriples;
   final List<MachOCodeSignature> codeSignatures;
   final List<MachOEncryptionInfo> encryptionInfos;
   final List<MachOEntryPoint> entryPoints;
@@ -263,6 +265,12 @@ class MachOLinkeditData {
     _lcFunctionVariantFixups => 'LC_FUNCTION_VARIANT_FIXUPS',
     _ => 'LC 0x${command.toRadixString(16)}',
   };
+}
+
+class MachOTargetTriple {
+  const MachOTargetTriple({required this.value});
+
+  final String value;
 }
 
 class MachOCodeSignature {
@@ -701,6 +709,7 @@ class MachOParser {
       thinReport.dyldEnvironments,
       thinReport.notes,
       thinReport.linkeditData,
+      thinReport.targetTriples,
       thinReport.codeSignatures,
       thinReport.encryptionInfos,
       thinReport.entryPoints,
@@ -770,6 +779,7 @@ class MachOParser {
     final dyldEnvironments = <MachODyldEnvironment>[];
     final notes = <MachONote>[];
     final linkeditData = <MachOLinkeditData>[];
+    final targetTriples = <MachOTargetTriple>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -828,6 +838,7 @@ class MachOParser {
       dyldEnvironments.addAll(sliceReport.dyldEnvironments);
       notes.addAll(sliceReport.notes);
       linkeditData.addAll(sliceReport.linkeditData);
+      targetTriples.addAll(sliceReport.targetTriples);
       codeSignatures.addAll(sliceReport.codeSignatures);
       encryptionInfos.addAll(sliceReport.encryptionInfos);
       entryPoints.addAll(sliceReport.entryPoints);
@@ -870,6 +881,7 @@ class MachOParser {
       dyldEnvironments,
       notes,
       linkeditData,
+      targetTriples,
       codeSignatures,
       encryptionInfos,
       entryPoints,
@@ -1104,6 +1116,7 @@ class MachOParser {
       report.dyldEnvironments,
       report.notes,
       report.linkeditData,
+      report.targetTriples,
       report.codeSignatures,
       report.encryptionInfos,
       report.entryPoints,
@@ -1166,6 +1179,7 @@ class MachOParser {
     final dyldEnvironments = <MachODyldEnvironment>[];
     final notes = <MachONote>[];
     final linkeditData = <MachOLinkeditData>[];
+    final targetTriples = <MachOTargetTriple>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -1221,6 +1235,7 @@ class MachOParser {
         dyldEnvironments.addAll(sliceReport.dyldEnvironments);
         notes.addAll(sliceReport.notes);
         linkeditData.addAll(sliceReport.linkeditData);
+        targetTriples.addAll(sliceReport.targetTriples);
         codeSignatures.addAll(sliceReport.codeSignatures);
         encryptionInfos.addAll(sliceReport.encryptionInfos);
         entryPoints.addAll(sliceReport.entryPoints);
@@ -1266,6 +1281,7 @@ class MachOParser {
       dyldEnvironments,
       notes,
       linkeditData,
+      targetTriples,
       codeSignatures,
       encryptionInfos,
       entryPoints,
@@ -1322,6 +1338,7 @@ class MachOParser {
     final dyldEnvironments = <MachODyldEnvironment>[];
     final notes = <MachONote>[];
     final linkeditData = <MachOLinkeditData>[];
+    final targetTriples = <MachOTargetTriple>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -1554,6 +1571,19 @@ class MachOParser {
         );
       }
 
+      if (command == _lcTargetTriple && commandSize >= 12) {
+        final value = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 8,
+          minimumStringOffset: 12,
+        );
+        if (value != null) {
+          targetTriples.add(MachOTargetTriple(value: value));
+        }
+      }
+
       if (command == _lcCodeSignature && commandSize >= 16) {
         codeSignatures.add(
           MachOCodeSignature(
@@ -1697,6 +1727,7 @@ class MachOParser {
       dyldEnvironments: dyldEnvironments,
       notes: notes,
       linkeditData: linkeditData,
+      targetTriples: targetTriples,
       codeSignatures: codeSignatures,
       encryptionInfos: encryptionInfos,
       entryPoints: entryPoints,
@@ -1741,6 +1772,7 @@ MachOReport _deduplicatedReport(
   List<MachODyldEnvironment> dyldEnvironments = const [],
   List<MachONote> notes = const [],
   List<MachOLinkeditData> linkeditData = const [],
+  List<MachOTargetTriple> targetTriples = const [],
   List<MachOCodeSignature> codeSignatures = const [],
   List<MachOEncryptionInfo> encryptionInfos = const [],
   List<MachOEntryPoint> entryPoints = const [],
@@ -1840,6 +1872,11 @@ MachOReport _deduplicatedReport(
   for (final data in linkeditData) {
     byLinkeditData['${data.command}|${data.dataOffset}|${data.dataSize}'] =
         data;
+  }
+
+  final byTargetTriple = <String, MachOTargetTriple>{};
+  for (final triple in targetTriples) {
+    byTargetTriple[triple.value] = triple;
   }
 
   final byCodeSignature = <String, MachOCodeSignature>{};
@@ -2025,6 +2062,7 @@ MachOReport _deduplicatedReport(
     dyldEnvironments: byDyldEnvironment.values.toList(),
     notes: byNote.values.toList(),
     linkeditData: byLinkeditData.values.toList(),
+    targetTriples: byTargetTriple.values.toList(),
     codeSignatures: byCodeSignature.values.toList(),
     encryptionInfos: byEncryptionInfo.values.toList(),
     entryPoints: byEntryPoint.values.toList(),
@@ -8211,6 +8249,7 @@ const _lcDyldChainedFixups = 0x80000034;
 const _lcAtomInfo = 0x36;
 const _lcFunctionVariants = 0x37;
 const _lcFunctionVariantFixups = 0x38;
+const _lcTargetTriple = 0x39;
 const _lcVersionMinMacosx = 0x24;
 const _lcVersionMinIphoneos = 0x25;
 const _lcVersionMinTvos = 0x2f;

@@ -67,6 +67,7 @@ enum MachOMetadataKind {
   dyldEnvironment,
   note,
   linkeditData,
+  targetTriple,
   codeSignature,
   encryptionInfo,
   entryPoint,
@@ -251,6 +252,16 @@ class IosEvidenceExtractor {
             kind: MachOMetadataKind.linkeditData,
             sourcePath: entity.path,
             value: _linkeditDataValue(data),
+          ),
+        );
+      }
+
+      for (final triple in machoReport.targetTriples) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.targetTriple,
+            sourcePath: entity.path,
+            value: triple.value,
           ),
         );
       }

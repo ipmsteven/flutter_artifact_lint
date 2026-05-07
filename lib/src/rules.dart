@@ -219,6 +219,14 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports generic linkedit data command offsets and sizes.',
     fix: 'No action required.',
   ),
+  'ios.macho.target_triple': RuleDefinition(
+    ruleId: 'ios.macho.target_triple',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O target triple',
+    description: 'Reports target triples from LC_TARGET_TRIPLE.',
+    fix: 'No action required.',
+  ),
   'ios.macho.code_signature': RuleDefinition(
     ruleId: 'ios.macho.code_signature',
     defaultLevel: FindingLevel.info,

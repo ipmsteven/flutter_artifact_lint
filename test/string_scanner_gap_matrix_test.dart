@@ -271,6 +271,18 @@ void main() {
       expect(finding.message, contains('size 64'));
     });
 
+    test('reports LC_TARGET_TRIPLE metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([_machOPathCommand(0x39, 'arm64e-apple-ios17.0')]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.target_triple',
+      );
+
+      expect(finding.message, contains('arm64e-apple-ios17.0'));
+    });
+
     test('reports generic linkedit data metadata', () async {
       final result = await _scanAppWithMainBinary(
         _machOBytes([

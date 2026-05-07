@@ -119,6 +119,8 @@ from `LC_BUILD_VERSION`.
 `ios.macho.linkedit_data` reports generic linkedit data command offsets and
 sizes.
 
+`ios.macho.target_triple` reports target triples from `LC_TARGET_TRIPLE`.
+
 `ios.macho.code_signature` reports `LC_CODE_SIGNATURE` offset and size metadata.
 
 `ios.macho.encryption_info` reports `LC_ENCRYPTION_INFO` FairPlay encryption
@@ -166,6 +168,7 @@ and `LC_MAIN`. `LC_NOTE` reports the note owner and referenced file range.
 Generic linkedit data metadata is reported for `LC_SEGMENT_SPLIT_INFO`,
 `LC_DYLIB_CODE_SIGN_DRS`, `LC_LINKER_OPTIMIZATION_HINT`, `LC_ATOM_INFO`,
 `LC_FUNCTION_VARIANTS`, and `LC_FUNCTION_VARIANT_FIXUPS`.
+`LC_TARGET_TRIPLE` reports the compiler target triple string when present.
 `LC_CODE_SIGNATURE` currently reports only the linkedit offset and size; it does
 not validate the signature blob or parse embedded entitlements.
 `LC_ENCRYPTION_INFO` reports FairPlay encryption offsets and crypt id metadata;
