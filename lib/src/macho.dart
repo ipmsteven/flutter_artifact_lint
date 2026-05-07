@@ -5,6 +5,7 @@ class MachOReport {
   const MachOReport({
     required this.linkedDylibs,
     this.architectures = const [],
+    this.headers = const [],
     this.buildVersions = const [],
     this.rpaths = const [],
     this.dylibIds = const [],
@@ -43,6 +44,7 @@ class MachOReport {
 
   final List<MachODylib> linkedDylibs;
   final List<MachOArchitecture> architectures;
+  final List<MachOHeaderInfo> headers;
   final List<MachOBuildVersion> buildVersions;
   final List<MachORpath> rpaths;
   final List<MachODylibId> dylibIds;
@@ -101,6 +103,42 @@ class MachOArchitecture {
     7 => 'i386',
     _ => 'cpu $cpuType subtype $cpuSubtype',
   };
+}
+
+class MachOHeaderInfo {
+  const MachOHeaderInfo({
+    required this.fileType,
+    required this.flags,
+    required this.is64Bit,
+  });
+
+  final int fileType;
+  final int flags;
+  final bool is64Bit;
+
+  String get fileTypeName => switch (fileType) {
+    1 => 'MH_OBJECT',
+    2 => 'MH_EXECUTE',
+    3 => 'MH_FVMLIB',
+    4 => 'MH_CORE',
+    5 => 'MH_PRELOAD',
+    6 => 'MH_DYLIB',
+    7 => 'MH_DYLINKER',
+    8 => 'MH_BUNDLE',
+    9 => 'MH_DYLIB_STUB',
+    10 => 'MH_DSYM',
+    11 => 'MH_KEXT_BUNDLE',
+    12 => 'MH_FILESET',
+    _ => 'MH filetype $fileType',
+  };
+
+  List<String> get flagNames {
+    final names = <String>[];
+    for (final flag in _machOHeaderFlags) {
+      if (flags & flag.mask != 0) names.add(flag.name);
+    }
+    return names;
+  }
 }
 
 class MachOBuildVersion {
@@ -614,6 +652,7 @@ class MachOParser {
     return _deduplicatedReport(
       thinReport.linkedDylibs,
       thinReport.architectures,
+      thinReport.headers,
       thinReport.buildVersions,
       thinReport.rpaths,
       thinReport.dylibIds,
@@ -680,6 +719,7 @@ class MachOParser {
     );
     final linkedDylibs = <MachODylib>[];
     final architectures = <MachOArchitecture>[];
+    final headers = <MachOHeaderInfo>[];
     final buildVersions = <MachOBuildVersion>[];
     final rpaths = <MachORpath>[];
     final dylibIds = <MachODylibId>[];
@@ -735,6 +775,7 @@ class MachOParser {
       final sliceReport = _parseThinFileAt(raf, sliceOffset, sliceSize);
       linkedDylibs.addAll(sliceReport.linkedDylibs);
       architectures.addAll(sliceReport.architectures);
+      headers.addAll(sliceReport.headers);
       buildVersions.addAll(sliceReport.buildVersions);
       rpaths.addAll(sliceReport.rpaths);
       dylibIds.addAll(sliceReport.dylibIds);
@@ -774,6 +815,7 @@ class MachOParser {
     return _deduplicatedReport(
       linkedDylibs,
       architectures,
+      headers,
       buildVersions,
       rpaths,
       dylibIds,
@@ -1005,6 +1047,7 @@ class MachOParser {
     return _deduplicatedReport(
       report.linkedDylibs,
       report.architectures,
+      report.headers,
       report.buildVersions,
       report.rpaths,
       report.dylibIds,
@@ -1064,6 +1107,7 @@ class MachOParser {
     var offset = 8;
     final linkedDylibs = <MachODylib>[];
     final architectures = <MachOArchitecture>[];
+    final headers = <MachOHeaderInfo>[];
     final buildVersions = <MachOBuildVersion>[];
     final rpaths = <MachORpath>[];
     final dylibIds = <MachODylibId>[];
@@ -1116,6 +1160,7 @@ class MachOParser {
         );
         linkedDylibs.addAll(sliceReport.linkedDylibs);
         architectures.addAll(sliceReport.architectures);
+        headers.addAll(sliceReport.headers);
         buildVersions.addAll(sliceReport.buildVersions);
         rpaths.addAll(sliceReport.rpaths);
         dylibIds.addAll(sliceReport.dylibIds);
@@ -1158,6 +1203,7 @@ class MachOParser {
     return _deduplicatedReport(
       linkedDylibs,
       architectures,
+      headers,
       buildVersions,
       rpaths,
       dylibIds,
@@ -1204,6 +1250,13 @@ class MachOParser {
     final linkedDylibs = <MachODylib>[];
     final architectures = [
       MachOArchitecture(cpuType: header.cpuType, cpuSubtype: header.cpuSubtype),
+    ];
+    final headers = [
+      MachOHeaderInfo(
+        fileType: header.fileType,
+        flags: header.flags,
+        is64Bit: header.is64Bit,
+      ),
     ];
     final buildVersions = <MachOBuildVersion>[];
     final rpaths = <MachORpath>[];
@@ -1554,6 +1607,7 @@ class MachOParser {
     return MachOReport(
       linkedDylibs: linkedDylibs,
       architectures: architectures,
+      headers: headers,
       buildVersions: buildVersions,
       rpaths: rpaths,
       dylibIds: dylibIds,
@@ -1595,6 +1649,7 @@ class MachOParser {
 MachOReport _deduplicatedReport(
   List<MachODylib> dylibs, [
   List<MachOArchitecture> architectures = const [],
+  List<MachOHeaderInfo> headers = const [],
   List<MachOBuildVersion> buildVersions = const [],
   List<MachORpath> rpaths = const [],
   List<MachODylibId> dylibIds = const [],
@@ -1642,6 +1697,11 @@ MachOReport _deduplicatedReport(
   for (final architecture in architectures) {
     byArchitecture['${architecture.cpuType}|${architecture.cpuSubtype}'] =
         architecture;
+  }
+
+  final byHeader = <String, MachOHeaderInfo>{};
+  for (final header in headers) {
+    byHeader['${header.fileType}|${header.flags}|${header.is64Bit}'] = header;
   }
 
   final byBuildVersion = <String, MachOBuildVersion>{};
@@ -1860,6 +1920,7 @@ MachOReport _deduplicatedReport(
   return MachOReport(
     linkedDylibs: byPath.values.toList(),
     architectures: byArchitecture.values.toList(),
+    headers: byHeader.values.toList(),
     buildVersions: byBuildVersion.values.toList(),
     rpaths: byRpath.values.toList(),
     dylibIds: byDylibId.values.toList(),
@@ -1904,6 +1965,8 @@ class _MachOHeader {
   const _MachOHeader({
     required this.cpuType,
     required this.cpuSubtype,
+    required this.fileType,
+    required this.flags,
     required this.is64Bit,
     required this.commandCount,
     required this.loadCommandsOffset,
@@ -1912,6 +1975,8 @@ class _MachOHeader {
 
   final int cpuType;
   final int cpuSubtype;
+  final int fileType;
+  final int flags;
   final bool is64Bit;
   final int commandCount;
   final int loadCommandsOffset;
@@ -1996,6 +2061,8 @@ _MachOHeader? _readHeader(List<int> bytes) {
   return _MachOHeader(
     cpuType: _readU32(bytes, 4),
     cpuSubtype: _readU32(bytes, 8),
+    fileType: _readU32(bytes, 12),
+    flags: _readU32(bytes, 24),
     is64Bit: is64Bit,
     commandCount: _readU32(bytes, 16),
     loadCommandsOffset: headerSize,
@@ -7973,6 +8040,34 @@ const _maxObjCPropertyListBytes = 2 * 1024 * 1024;
 const _maxSectionStringBytes = 4 * 1024 * 1024;
 const _maxStringTableBytes = 16 * 1024 * 1024;
 const _maxSymbolTableBytes = 16 * 1024 * 1024;
+const _machOHeaderFlags = <({int mask, String name})>[
+  (mask: 0x00000001, name: 'MH_NOUNDEFS'),
+  (mask: 0x00000002, name: 'MH_INCRLINK'),
+  (mask: 0x00000004, name: 'MH_DYLDLINK'),
+  (mask: 0x00000008, name: 'MH_BINDATLOAD'),
+  (mask: 0x00000010, name: 'MH_PREBOUND'),
+  (mask: 0x00000020, name: 'MH_SPLIT_SEGS'),
+  (mask: 0x00000040, name: 'MH_LAZY_INIT'),
+  (mask: 0x00000080, name: 'MH_TWOLEVEL'),
+  (mask: 0x00000100, name: 'MH_FORCE_FLAT'),
+  (mask: 0x00000200, name: 'MH_NOMULTIDEFS'),
+  (mask: 0x00000400, name: 'MH_NOFIXPREBINDING'),
+  (mask: 0x00000800, name: 'MH_PREBINDABLE'),
+  (mask: 0x00001000, name: 'MH_ALLMODSBOUND'),
+  (mask: 0x00002000, name: 'MH_SUBSECTIONS_VIA_SYMBOLS'),
+  (mask: 0x00004000, name: 'MH_CANONICAL'),
+  (mask: 0x00008000, name: 'MH_WEAK_DEFINES'),
+  (mask: 0x00010000, name: 'MH_BINDS_TO_WEAK'),
+  (mask: 0x00020000, name: 'MH_ALLOW_STACK_EXECUTION'),
+  (mask: 0x00040000, name: 'MH_ROOT_SAFE'),
+  (mask: 0x00080000, name: 'MH_SETUID_SAFE'),
+  (mask: 0x00100000, name: 'MH_NO_REEXPORTED_DYLIBS'),
+  (mask: 0x00200000, name: 'MH_PIE'),
+  (mask: 0x00400000, name: 'MH_DEAD_STRIPPABLE_DYLIB'),
+  (mask: 0x00800000, name: 'MH_HAS_TLV_DESCRIPTORS'),
+  (mask: 0x01000000, name: 'MH_NO_HEAP_EXECUTION'),
+  (mask: 0x02000000, name: 'MH_APP_EXTENSION_SAFE'),
+];
 const _mhMagic = 0xfeedface;
 const _mhMagic64 = 0xfeedfacf;
 const _lcSegment = 0x01;

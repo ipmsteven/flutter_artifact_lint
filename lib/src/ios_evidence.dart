@@ -57,6 +57,7 @@ class MachOBuildVersionEvidence {
 }
 
 enum MachOMetadataKind {
+  header,
   rpath,
   dylibId,
   uuid,
@@ -148,6 +149,16 @@ class IosEvidenceExtractor {
           MachOBuildVersionEvidence(
             sourcePath: entity.path,
             buildVersion: buildVersion,
+          ),
+        );
+      }
+
+      for (final header in machoReport.headers) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.header,
+            sourcePath: entity.path,
+            value: _machoHeaderValue(header),
           ),
         );
       }
@@ -453,6 +464,15 @@ Iterable<String> _matchedTokens(String value, List<String> tokens) sync* {
   for (final token in tokens) {
     if (value.contains(token)) yield token;
   }
+}
+
+String _machoHeaderValue(MachOHeaderInfo header) {
+  final flags = header.flagNames;
+  return [
+    header.is64Bit ? '64-bit' : '32-bit',
+    header.fileTypeName,
+    if (flags.isEmpty) 'flags none' else 'flags ${flags.join(', ')}',
+  ].join('; ');
 }
 
 String _chainedFixupsValue(MachOChainedFixups chainedFixup) {

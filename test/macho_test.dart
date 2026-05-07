@@ -77,6 +77,19 @@ void main() {
       expect(report.architectures.single.name, 'arm64');
     });
 
+    test('reads file type and flags from a thin Mach-O header', () {
+      final report = const MachOParser().parse(
+        thinMachO([], fileType: 6, flags: 0x00200000 | 0x01000000),
+      );
+
+      expect(report.headers, hasLength(1));
+      expect(report.headers.single.fileTypeName, 'MH_DYLIB');
+      expect(
+        report.headers.single.flagNames,
+        containsAll(['MH_PIE', 'MH_NO_HEAP_EXECUTION']),
+      );
+    });
+
     test('distinguishes arm64e architecture subtype', () {
       final report = const MachOParser().parse(thinMachO([], cpuSubtype: 2));
 
@@ -1749,6 +1762,8 @@ List<int> thinMachO(
   List<List<int>> commands, {
   int cpuType = 0x0100000c,
   int cpuSubtype = 0,
+  int fileType = 2,
+  int flags = 0,
 }) {
   return [
     ...machOHeader64(
@@ -1756,6 +1771,8 @@ List<int> thinMachO(
       sizeofcmds: commands.fold(0, (total, command) => total + command.length),
       cpuType: cpuType,
       cpuSubtype: cpuSubtype,
+      fileType: fileType,
+      flags: flags,
     ),
     for (final command in commands) ...command,
   ];
@@ -4211,15 +4228,17 @@ List<int> machOHeader64({
   required int sizeofcmds,
   int cpuType = 0x0100000c,
   int cpuSubtype = 0,
+  int fileType = 2,
+  int flags = 0,
 }) {
   return [
     0xcf, 0xfa, 0xed, 0xfe, // MH_MAGIC_64
     ...u32(cpuType),
     ...u32(cpuSubtype),
-    ...u32(2), // MH_EXECUTE
+    ...u32(fileType),
     ...u32(ncmds),
     ...u32(sizeofcmds),
-    ...u32(0), // flags
+    ...u32(flags),
     ...u32(0), // reserved
   ];
 }

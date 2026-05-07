@@ -139,6 +139,14 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports architecture slices found in Mach-O binaries.',
     fix: 'No action required.',
   ),
+  'ios.macho.header': RuleDefinition(
+    ruleId: 'ios.macho.header',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O header',
+    description: 'Reports Mach-O file type and header flags.',
+    fix: 'No action required.',
+  ),
   'ios.macho.rpath': RuleDefinition(
     ruleId: 'ios.macho.rpath',
     defaultLevel: FindingLevel.info,

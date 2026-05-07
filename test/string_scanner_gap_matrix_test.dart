@@ -257,6 +257,20 @@ void main() {
   });
 
   group('Mach-O architecture parser acceptance', () {
+    test('reports Mach-O header file type and flags', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOHeaderBytes(flags: 0x00200000 | 0x01000000),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.header',
+      );
+
+      expect(finding.message, contains('MH_EXECUTE'));
+      expect(finding.message, contains('MH_PIE'));
+      expect(finding.message, contains('MH_NO_HEAP_EXECUTION'));
+    });
+
     test(
       'reports architecture inventory from a fat Mach-O main binary',
       () async {
@@ -432,15 +446,17 @@ List<int> _machOHeaderBytes({
   int ncmds = 0,
   int sizeofcmds = 0,
   int cpuType = 0x0100000c,
+  int fileType = 2,
+  int flags = 0,
 }) {
   return [
     0xcf, 0xfa, 0xed, 0xfe, // MH_MAGIC_64
     ..._u32(cpuType),
     ..._u32(0), // CPU_SUBTYPE_ARM64_ALL
-    ..._u32(2), // MH_EXECUTE
+    ..._u32(fileType),
     ..._u32(ncmds == 0 && sizeofcmds != 0 ? 1 : ncmds),
     ..._u32(sizeofcmds),
-    ..._u32(0), // flags
+    ..._u32(flags),
     ..._u32(0), // reserved
   ];
 }

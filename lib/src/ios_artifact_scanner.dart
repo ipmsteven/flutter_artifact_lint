@@ -734,6 +734,7 @@ List<LintFinding> _machoBuildVersionInfo(EvidenceReport evidence) {
 List<LintFinding> _machoMetadataInfo(EvidenceReport evidence) {
   return evidence.machOMetadata.map((metadata) {
     final ruleId = switch (metadata.kind) {
+      MachOMetadataKind.header => 'ios.macho.header',
       MachOMetadataKind.rpath => 'ios.macho.rpath',
       MachOMetadataKind.dylibId => 'ios.macho.dylib_id',
       MachOMetadataKind.uuid => 'ios.macho.uuid',

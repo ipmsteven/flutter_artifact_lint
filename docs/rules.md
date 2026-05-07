@@ -97,6 +97,8 @@ from `LC_BUILD_VERSION`.
 
 `ios.macho.architecture` reports architecture slices found in Mach-O binaries.
 
+`ios.macho.header` reports Mach-O file type and header flags.
+
 `ios.macho.rpath` reports runtime library search paths from `LC_RPATH`.
 
 `ios.macho.dylib_id` reports dynamic library install names from `LC_ID_DYLIB`.
@@ -143,6 +145,9 @@ the scanner report system framework evidence even when the framework name
 appears only in load-command metadata.
 
 Mach-O architecture inventory is reported from thin and fat/universal headers.
+Mach-O header metadata reports the file type, 32-bit or 64-bit header shape,
+and decoded header flags such as `MH_PIE`, `MH_NO_HEAP_EXECUTION`, and
+`MH_APP_EXTENSION_SAFE`.
 Mach-O build metadata is parsed from `LC_BUILD_VERSION` and legacy
 `LC_VERSION_MIN_*` commands to report platform, minimum OS, SDK version, and
 `LC_BUILD_VERSION` tool entries such as clang, swift, and ld.
