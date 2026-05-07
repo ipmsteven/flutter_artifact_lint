@@ -22,6 +22,7 @@ class MachOReport {
     this.codeSignatures = const [],
     this.encryptionInfos = const [],
     this.entryPoints = const [],
+    this.threadCommands = const [],
     this.routines = const [],
     this.twolevelHints = const [],
     this.prebindChecksums = const [],
@@ -69,6 +70,7 @@ class MachOReport {
   final List<MachOCodeSignature> codeSignatures;
   final List<MachOEncryptionInfo> encryptionInfos;
   final List<MachOEntryPoint> entryPoints;
+  final List<MachOThreadCommand> threadCommands;
   final List<MachORoutines> routines;
   final List<MachOTwolevelHints> twolevelHints;
   final List<MachOPrebindChecksum> prebindChecksums;
@@ -343,6 +345,26 @@ class MachOEntryPoint {
 
   final int entryOffset;
   final int stackSize;
+}
+
+class MachOThreadCommand {
+  const MachOThreadCommand({required this.command, required this.states});
+
+  final int command;
+  final List<MachOThreadState> states;
+
+  String get commandName => switch (command) {
+    _lcThread => 'LC_THREAD',
+    _lcUnixThread => 'LC_UNIXTHREAD',
+    _ => 'LC 0x${command.toRadixString(16)}',
+  };
+}
+
+class MachOThreadState {
+  const MachOThreadState({required this.flavor, required this.count});
+
+  final int flavor;
+  final int count;
 }
 
 class MachORoutines {
@@ -790,6 +812,7 @@ class MachOParser {
       thinReport.codeSignatures,
       thinReport.encryptionInfos,
       thinReport.entryPoints,
+      thinReport.threadCommands,
       thinReport.routines,
       thinReport.twolevelHints,
       thinReport.prebindChecksums,
@@ -865,6 +888,7 @@ class MachOParser {
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
+    final threadCommands = <MachOThreadCommand>[];
     final routines = <MachORoutines>[];
     final twolevelHints = <MachOTwolevelHints>[];
     final prebindChecksums = <MachOPrebindChecksum>[];
@@ -929,6 +953,7 @@ class MachOParser {
       codeSignatures.addAll(sliceReport.codeSignatures);
       encryptionInfos.addAll(sliceReport.encryptionInfos);
       entryPoints.addAll(sliceReport.entryPoints);
+      threadCommands.addAll(sliceReport.threadCommands);
       routines.addAll(sliceReport.routines);
       twolevelHints.addAll(sliceReport.twolevelHints);
       prebindChecksums.addAll(sliceReport.prebindChecksums);
@@ -977,6 +1002,7 @@ class MachOParser {
       codeSignatures,
       encryptionInfos,
       entryPoints,
+      threadCommands,
       routines,
       twolevelHints,
       prebindChecksums,
@@ -1217,6 +1243,7 @@ class MachOParser {
       report.codeSignatures,
       report.encryptionInfos,
       report.entryPoints,
+      report.threadCommands,
       report.routines,
       report.twolevelHints,
       report.prebindChecksums,
@@ -1285,6 +1312,7 @@ class MachOParser {
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
+    final threadCommands = <MachOThreadCommand>[];
     final routines = <MachORoutines>[];
     final twolevelHints = <MachOTwolevelHints>[];
     final prebindChecksums = <MachOPrebindChecksum>[];
@@ -1346,6 +1374,7 @@ class MachOParser {
         codeSignatures.addAll(sliceReport.codeSignatures);
         encryptionInfos.addAll(sliceReport.encryptionInfos);
         entryPoints.addAll(sliceReport.entryPoints);
+        threadCommands.addAll(sliceReport.threadCommands);
         routines.addAll(sliceReport.routines);
         twolevelHints.addAll(sliceReport.twolevelHints);
         prebindChecksums.addAll(sliceReport.prebindChecksums);
@@ -1397,6 +1426,7 @@ class MachOParser {
       codeSignatures,
       encryptionInfos,
       entryPoints,
+      threadCommands,
       routines,
       twolevelHints,
       prebindChecksums,
@@ -1459,6 +1489,7 @@ class MachOParser {
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
+    final threadCommands = <MachOThreadCommand>[];
     final routines = <MachORoutines>[];
     final twolevelHints = <MachOTwolevelHints>[];
     final prebindChecksums = <MachOPrebindChecksum>[];
@@ -1764,6 +1795,19 @@ class MachOParser {
         );
       }
 
+      if (_isThreadCommand(command) && commandSize >= 8) {
+        threadCommands.add(
+          MachOThreadCommand(
+            command: command,
+            states: _readThreadStates(
+              bytes,
+              commandOffset: offset,
+              commandSize: commandSize,
+            ),
+          ),
+        );
+      }
+
       if (command == _lcRoutines && commandSize >= 40) {
         routines.add(
           MachORoutines(
@@ -1920,6 +1964,7 @@ class MachOParser {
       codeSignatures: codeSignatures,
       encryptionInfos: encryptionInfos,
       entryPoints: entryPoints,
+      threadCommands: threadCommands,
       routines: routines,
       twolevelHints: twolevelHints,
       prebindChecksums: prebindChecksums,
@@ -1970,6 +2015,7 @@ MachOReport _deduplicatedReport(
   List<MachOCodeSignature> codeSignatures = const [],
   List<MachOEncryptionInfo> encryptionInfos = const [],
   List<MachOEntryPoint> entryPoints = const [],
+  List<MachOThreadCommand> threadCommands = const [],
   List<MachORoutines> routines = const [],
   List<MachOTwolevelHints> twolevelHints = const [],
   List<MachOPrebindChecksum> prebindChecksums = const [],
@@ -2103,6 +2149,14 @@ MachOReport _deduplicatedReport(
   for (final entryPoint in entryPoints) {
     byEntryPoint['${entryPoint.entryOffset}|${entryPoint.stackSize}'] =
         entryPoint;
+  }
+
+  final byThreadCommand = <String, MachOThreadCommand>{};
+  for (final threadCommand in threadCommands) {
+    final statesKey = threadCommand.states
+        .map((state) => '${state.flavor}:${state.count}')
+        .join(',');
+    byThreadCommand['${threadCommand.command}|$statesKey'] = threadCommand;
   }
 
   final byRoutines = <String, MachORoutines>{};
@@ -2292,6 +2346,7 @@ MachOReport _deduplicatedReport(
     codeSignatures: byCodeSignature.values.toList(),
     encryptionInfos: byEncryptionInfo.values.toList(),
     entryPoints: byEntryPoint.values.toList(),
+    threadCommands: byThreadCommand.values.toList(),
     routines: byRoutines.values.toList(),
     twolevelHints: byTwolevelHints.values.toList(),
     prebindChecksums: byPrebindChecksum.values.toList(),
@@ -2473,6 +2528,10 @@ bool _isDylinkerCommand(int command) {
   return command == _lcLoadDylinker || command == _lcIdDylinker;
 }
 
+bool _isThreadCommand(int command) {
+  return command == _lcThread || command == _lcUnixThread;
+}
+
 bool _isDyldInfoCommand(int command) {
   return command == _lcDyldInfo || command == _lcDyldInfoOnly;
 }
@@ -2542,6 +2601,26 @@ List<String> _readLinkerOptionStrings(
   }
 
   return values.length == count ? values : const [];
+}
+
+List<MachOThreadState> _readThreadStates(
+  List<int> bytes, {
+  required int commandOffset,
+  required int commandSize,
+}) {
+  final states = <MachOThreadState>[];
+  final commandEnd = commandOffset + commandSize;
+  var offset = commandOffset + 8;
+  while (offset + 8 <= commandEnd) {
+    final flavor = _readU32(bytes, offset);
+    final count = _readU32(bytes, offset + 4);
+    final stateByteCount = count * 4;
+    final nextOffset = offset + 8 + stateByteCount;
+    if (nextOffset > commandEnd) break;
+    states.add(MachOThreadState(flavor: flavor, count: count));
+    offset = nextOffset;
+  }
+  return states;
 }
 
 List<MachOBuildToolVersion> _readBuildToolVersions(
@@ -8459,6 +8538,8 @@ const _mhMagic = 0xfeedface;
 const _mhMagic64 = 0xfeedfacf;
 const _lcSegment = 0x01;
 const _lcSymtab = 0x02;
+const _lcThread = 0x04;
+const _lcUnixThread = 0x05;
 const _lcDysymtab = 0x0b;
 const _lcLoadDylib = 0x0c;
 const _lcIdDylib = 0x0d;

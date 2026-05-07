@@ -270,6 +270,14 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports LC_MAIN entry offset and stack size metadata.',
     fix: 'No action required.',
   ),
+  'ios.macho.thread': RuleDefinition(
+    ruleId: 'ios.macho.thread',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O thread state',
+    description: 'Reports LC_THREAD and LC_UNIXTHREAD state flavor metadata.',
+    fix: 'No action required.',
+  ),
   'ios.macho.routines': RuleDefinition(
     ruleId: 'ios.macho.routines',
     defaultLevel: FindingLevel.info,

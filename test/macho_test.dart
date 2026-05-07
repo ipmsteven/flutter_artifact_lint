@@ -303,6 +303,32 @@ void main() {
       expect(report.entryPoints.single.stackSize, 0x4000);
     });
 
+    test('reads LC_THREAD and LC_UNIXTHREAD state metadata', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoThreadCommand(command: 0x04, states: [(flavor: 1, count: 4)]),
+          machoThreadCommand(
+            command: 0x05,
+            states: [(flavor: 6, count: 68), (flavor: 7, count: 4)],
+          ),
+        ]),
+      );
+
+      expect(report.threadCommands, hasLength(2));
+      expect(report.threadCommands.first.commandName, 'LC_THREAD');
+      expect(report.threadCommands.first.states.single.flavor, 1);
+      expect(report.threadCommands.first.states.single.count, 4);
+      expect(report.threadCommands.last.commandName, 'LC_UNIXTHREAD');
+      expect(report.threadCommands.last.states.map((state) => state.flavor), [
+        6,
+        7,
+      ]);
+      expect(report.threadCommands.last.states.map((state) => state.count), [
+        68,
+        4,
+      ]);
+    });
+
     test('reads routines two-level hints and prebind checksum metadata', () {
       final report = const MachOParser().parse(
         thinMachO([
@@ -817,6 +843,24 @@ void main() {
       expect(report.filesetEntries.single.entryId, 'com.apple.kernel');
       expect(report.filesetEntries.single.vmAddress, 0x200000000);
       expect(report.filesetEntries.single.fileOffset, 8192);
+    });
+
+    test('reads LC_THREAD metadata from the file-backed parser', () {
+      final root = Directory.systemTemp.createTempSync('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(
+          thinMachO([
+            machoThreadCommand(command: 0x05, states: [(flavor: 6, count: 68)]),
+          ]),
+        );
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(report.threadCommands.single.commandName, 'LC_UNIXTHREAD');
+      expect(report.threadCommands.single.states.single.flavor, 6);
+      expect(report.threadCommands.single.states.single.count, 68);
     });
 
     test(
@@ -5113,6 +5157,20 @@ List<int> machoMainCommand({required int entryOffset, required int stackSize}) {
     ...u64(entryOffset),
     ...u64(stackSize),
   ];
+}
+
+List<int> machoThreadCommand({
+  required int command,
+  required List<({int flavor, int count})> states,
+}) {
+  final payload = [
+    for (final state in states) ...[
+      ...u32(state.flavor),
+      ...u32(state.count),
+      ...List.filled(state.count * 4, 0),
+    ],
+  ];
+  return [...u32(command), ...u32(8 + payload.length), ...payload];
 }
 
 List<int> machoRoutinesCommand({

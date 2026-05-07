@@ -73,6 +73,7 @@ enum MachOMetadataKind {
   codeSignature,
   encryptionInfo,
   entryPoint,
+  thread,
   routines,
   twolevelHints,
   prebindChecksum,
@@ -320,6 +321,16 @@ class IosEvidenceExtractor {
             sourcePath: entity.path,
             value:
                 'entry offset ${entryPoint.entryOffset}, stack size ${entryPoint.stackSize}',
+          ),
+        );
+      }
+
+      for (final threadCommand in machoReport.threadCommands) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.thread,
+            sourcePath: entity.path,
+            value: _threadCommandValue(threadCommand),
           ),
         );
       }
@@ -573,6 +584,18 @@ String _linkeditDataValue(MachOLinkeditData data) {
 
 String _dylinkerValue(MachODylinker dylinker) {
   return '${dylinker.commandName}; ${dylinker.path}';
+}
+
+String _threadCommandValue(MachOThreadCommand threadCommand) {
+  final states = [
+    for (final state in threadCommand.states)
+      'flavor ${state.flavor} count ${state.count}',
+  ];
+  return [
+    threadCommand.commandName,
+    'states ${threadCommand.states.length}',
+    ...states,
+  ].join('; ');
 }
 
 String _routinesValue(MachORoutines routines) {

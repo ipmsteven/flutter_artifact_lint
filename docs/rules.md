@@ -135,6 +135,9 @@ offset, size, and crypt id metadata.
 
 `ios.macho.entry_point` reports `LC_MAIN` entry offset and stack size metadata.
 
+`ios.macho.thread` reports thread state flavor metadata from `LC_THREAD` and
+`LC_UNIXTHREAD`.
+
 `ios.macho.routines` reports initialization routine metadata from `LC_ROUTINES`
 and `LC_ROUTINES_64`.
 

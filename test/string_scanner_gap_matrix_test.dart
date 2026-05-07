@@ -175,6 +175,26 @@ void main() {
       expect(finding.message, contains('stack size 16384'));
     });
 
+    test('reports thread state load command metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([
+          _machOThreadCommand(
+            command: 0x05,
+            states: [(flavor: 6, count: 68), (flavor: 7, count: 4)],
+          ),
+        ]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.thread',
+      );
+
+      expect(finding.message, contains('LC_UNIXTHREAD'));
+      expect(finding.message, contains('states 2'));
+      expect(finding.message, contains('flavor 6 count 68'));
+      expect(finding.message, contains('flavor 7 count 4'));
+    });
+
     test(
       'reports routines two-level hints and prebind checksum load command metadata',
       () async {
@@ -703,6 +723,20 @@ List<int> _machOMainCommand({
     ..._u64(entryOffset),
     ..._u64(stackSize),
   ];
+}
+
+List<int> _machOThreadCommand({
+  required int command,
+  required List<({int flavor, int count})> states,
+}) {
+  final payload = [
+    for (final state in states) ...[
+      ..._u32(state.flavor),
+      ..._u32(state.count),
+      ...List.filled(state.count * 4, 0),
+    ],
+  ];
+  return [..._u32(command), ..._u32(8 + payload.length), ...payload];
 }
 
 List<int> _machORoutines64Command({
