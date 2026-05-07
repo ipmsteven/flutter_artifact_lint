@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_artifact_lint/src/macho.dart';
 import 'package:test/test.dart';
@@ -241,6 +242,48 @@ void main() {
       );
     });
 
+    test('reads LC_SYMTAB metadata and symbols from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithSymbolTable([
+          '_UIApplicationOpenSettingsURLString',
+          '_swift_getFunctionReplacement',
+        ]),
+      );
+
+      expect(report.symbolTables.single.symbolCount, 2);
+      expect(
+        report.symbols.map((symbol) => symbol.name),
+        containsAll([
+          '_UIApplicationOpenSettingsURLString',
+          '_swift_getFunctionReplacement',
+        ]),
+      );
+    });
+
+    test('reads LC_SYMTAB symbols from the file-backed parser', () async {
+      final root = await Directory.systemTemp.createTemp('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(
+          thinMachOWithSymbolTable([
+            r'_OBJC_CLASS_$_RunnerViewController',
+            '_OBJC_SELECTOR_REFERENCES_',
+          ], paddingBeforeSymbolTable: 4096),
+        );
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(report.symbolTables.single.symbolCount, 2);
+      expect(
+        report.symbols.map((symbol) => symbol.name),
+        containsAll([
+          r'_OBJC_CLASS_$_RunnerViewController',
+          '_OBJC_SELECTOR_REFERENCES_',
+        ]),
+      );
+    });
+
     test('ignores non-Mach-O bytes', () {
       final report = const MachOParser().parse(latin1.encode('not a binary'));
 
@@ -281,6 +324,34 @@ List<int> thinMachO(
   ];
 }
 
+List<int> thinMachOWithSymbolTable(
+  List<String> symbols, {
+  int paddingBeforeSymbolTable = 0,
+}) {
+  final stringTable = stringTableBytes(symbols);
+  final symbolEntries = <int>[];
+  var stringIndex = 1;
+  for (final symbol in symbols) {
+    symbolEntries.addAll(nlist64Bytes(stringIndex));
+    stringIndex += latin1.encode(symbol).length + 1;
+  }
+
+  final symoff = 32 + 24 + paddingBeforeSymbolTable;
+  final stroff = symoff + symbolEntries.length;
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: 24),
+    ...machoSymtabCommand(
+      symbolOffset: symoff,
+      symbolCount: symbols.length,
+      stringOffset: stroff,
+      stringSize: stringTable.length,
+    ),
+    ...List.filled(paddingBeforeSymbolTable, 0),
+    ...symbolEntries,
+    ...stringTable,
+  ];
+}
+
 List<int> machOHeader64({
   required int ncmds,
   required int sizeofcmds,
@@ -296,6 +367,39 @@ List<int> machOHeader64({
     ...u32(sizeofcmds),
     ...u32(0), // flags
     ...u32(0), // reserved
+  ];
+}
+
+List<int> machoSymtabCommand({
+  required int symbolOffset,
+  required int symbolCount,
+  required int stringOffset,
+  required int stringSize,
+}) {
+  return [
+    ...u32(0x02), // LC_SYMTAB
+    ...u32(24),
+    ...u32(symbolOffset),
+    ...u32(symbolCount),
+    ...u32(stringOffset),
+    ...u32(stringSize),
+  ];
+}
+
+List<int> nlist64Bytes(int stringIndex) {
+  return [
+    ...u32(stringIndex),
+    0x0f, // N_SECT | N_EXT
+    0x01, // n_sect
+    ...u16(0), // n_desc
+    ...u64(0), // n_value
+  ];
+}
+
+List<int> stringTableBytes(List<String> symbols) {
+  return [
+    0,
+    for (final symbol in symbols) ...[...latin1.encode(symbol), 0],
   ];
 }
 
@@ -491,6 +595,10 @@ List<int> u32(int value) {
     (value >> 16) & 0xff,
     (value >> 24) & 0xff,
   ];
+}
+
+List<int> u16(int value) {
+  return [value & 0xff, (value >> 8) & 0xff];
 }
 
 List<int> u32be(int value) {

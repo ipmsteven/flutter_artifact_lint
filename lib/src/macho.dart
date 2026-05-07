@@ -12,6 +12,8 @@ class MachOReport {
     this.sourceVersions = const [],
     this.codeSignatures = const [],
     this.segments = const [],
+    this.symbolTables = const [],
+    this.symbols = const [],
   });
 
   final List<MachODylib> linkedDylibs;
@@ -23,6 +25,8 @@ class MachOReport {
   final List<MachOSourceVersion> sourceVersions;
   final List<MachOCodeSignature> codeSignatures;
   final List<MachOSegment> segments;
+  final List<MachOSymbolTable> symbolTables;
+  final List<MachOSymbol> symbols;
 }
 
 class MachODylib {
@@ -124,6 +128,36 @@ class MachOSection {
   String get displayName => '$segmentName.$name';
 }
 
+class MachOSymbolTable {
+  const MachOSymbolTable({
+    required this.symbolOffset,
+    required this.symbolCount,
+    required this.stringOffset,
+    required this.stringSize,
+  });
+
+  final int symbolOffset;
+  final int symbolCount;
+  final int stringOffset;
+  final int stringSize;
+}
+
+class MachOSymbol {
+  const MachOSymbol({
+    required this.name,
+    required this.type,
+    required this.sectionIndex,
+    required this.description,
+    required this.value,
+  });
+
+  final String name;
+  final int type;
+  final int sectionIndex;
+  final int description;
+  final int value;
+}
+
 class MachOParser {
   const MachOParser();
 
@@ -155,6 +189,8 @@ class MachOParser {
       thinReport.sourceVersions,
       thinReport.codeSignatures,
       thinReport.segments,
+      thinReport.symbolTables,
+      thinReport.symbols,
     );
   }
 
@@ -194,6 +230,8 @@ class MachOParser {
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
     final segments = <MachOSegment>[];
+    final symbolTables = <MachOSymbolTable>[];
+    final symbols = <MachOSymbol>[];
 
     for (
       var offset = 0;
@@ -222,6 +260,8 @@ class MachOParser {
       sourceVersions.addAll(sliceReport.sourceVersions);
       codeSignatures.addAll(sliceReport.codeSignatures);
       segments.addAll(sliceReport.segments);
+      symbolTables.addAll(sliceReport.symbolTables);
+      symbols.addAll(sliceReport.symbols);
     }
 
     return _deduplicatedReport(
@@ -234,6 +274,8 @@ class MachOParser {
       sourceVersions,
       codeSignatures,
       segments,
+      symbolTables,
+      symbols,
     );
   }
 
@@ -252,10 +294,15 @@ class MachOParser {
     }
 
     final magic = _readU32(headerPrefix, 0);
-    final headerSize = switch (magic) {
-      _mhMagic64 => 32,
-      _mhMagic => 28,
+    final is64Bit = switch (magic) {
+      _mhMagic64 => true,
+      _mhMagic => false,
       _ => null,
+    };
+    final headerSize = switch (is64Bit) {
+      true => 32,
+      false => 28,
+      null => null,
     };
     if (headerSize == null || headerPrefix.length < headerSize) {
       return const MachOReport(linkedDylibs: []);
@@ -270,7 +317,29 @@ class MachOParser {
       fileOffset,
       _boundedEnd(headerSize, commandBytes, availableLength),
     );
-    return _parseThin(thinBytes);
+    final report = _parseThin(thinBytes);
+    final symbols = _readSymbolsFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      is64Bit: is64Bit!,
+      symbolTables: report.symbolTables,
+    );
+    if (symbols.isEmpty) return report;
+
+    return _deduplicatedReport(
+      report.linkedDylibs,
+      report.architectures,
+      report.buildVersions,
+      report.rpaths,
+      report.dylibIds,
+      report.uuids,
+      report.sourceVersions,
+      report.codeSignatures,
+      report.segments,
+      report.symbolTables,
+      [...report.symbols, ...symbols],
+    );
   }
 
   MachOReport? _parseFat(List<int> bytes) {
@@ -298,6 +367,8 @@ class MachOParser {
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
     final segments = <MachOSegment>[];
+    final symbolTables = <MachOSymbolTable>[];
+    final symbols = <MachOSymbol>[];
 
     for (var i = 0; i < architectureCount; i += 1) {
       if (offset + archSize > bytes.length) break;
@@ -323,6 +394,8 @@ class MachOParser {
         sourceVersions.addAll(sliceReport.sourceVersions);
         codeSignatures.addAll(sliceReport.codeSignatures);
         segments.addAll(sliceReport.segments);
+        symbolTables.addAll(sliceReport.symbolTables);
+        symbols.addAll(sliceReport.symbols);
       }
 
       offset += archSize;
@@ -338,6 +411,8 @@ class MachOParser {
       sourceVersions,
       codeSignatures,
       segments,
+      symbolTables,
+      symbols,
     );
   }
 
@@ -358,6 +433,7 @@ class MachOParser {
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
     final segments = <MachOSegment>[];
+    final symbolTables = <MachOSymbolTable>[];
     var offset = header.loadCommandsOffset;
 
     for (var i = 0; i < header.commandCount; i += 1) {
@@ -422,6 +498,17 @@ class MachOParser {
         }
       }
 
+      if (command == _lcSymtab && commandSize >= 24) {
+        symbolTables.add(
+          MachOSymbolTable(
+            symbolOffset: _readU32(bytes, offset + 8),
+            symbolCount: _readU32(bytes, offset + 12),
+            stringOffset: _readU32(bytes, offset + 16),
+            stringSize: _readU32(bytes, offset + 20),
+          ),
+        );
+      }
+
       if (command == _lcUuid && commandSize >= 24) {
         uuids.add(MachOUuid(value: _uuidString(bytes, offset + 8)));
       }
@@ -467,6 +554,12 @@ class MachOParser {
       offset += commandSize;
     }
 
+    final symbols = _readSymbolsFromBytes(
+      bytes,
+      is64Bit: header.is64Bit,
+      symbolTables: symbolTables,
+    );
+
     return MachOReport(
       linkedDylibs: linkedDylibs,
       architectures: architectures,
@@ -477,6 +570,8 @@ class MachOParser {
       sourceVersions: sourceVersions,
       codeSignatures: codeSignatures,
       segments: segments,
+      symbolTables: symbolTables,
+      symbols: symbols,
     );
   }
 }
@@ -491,6 +586,8 @@ MachOReport _deduplicatedReport(
   List<MachOSourceVersion> sourceVersions = const [],
   List<MachOCodeSignature> codeSignatures = const [],
   List<MachOSegment> segments = const [],
+  List<MachOSymbolTable> symbolTables = const [],
+  List<MachOSymbol> symbols = const [],
 ]) {
   final byPath = <String, MachODylib>{};
   for (final dylib in dylibs) {
@@ -549,6 +646,18 @@ MachOReport _deduplicatedReport(
     }
   }
 
+  final bySymbolTable = <String, MachOSymbolTable>{};
+  for (final symbolTable in symbolTables) {
+    bySymbolTable['${symbolTable.symbolOffset}|${symbolTable.symbolCount}|${symbolTable.stringOffset}|${symbolTable.stringSize}'] =
+        symbolTable;
+  }
+
+  final bySymbol = <String, MachOSymbol>{};
+  for (final symbol in symbols) {
+    bySymbol['${symbol.name}|${symbol.type}|${symbol.sectionIndex}|${symbol.description}|${symbol.value}'] =
+        symbol;
+  }
+
   return MachOReport(
     linkedDylibs: byPath.values.toList(),
     architectures: byArchitecture.values.toList(),
@@ -562,6 +671,8 @@ MachOReport _deduplicatedReport(
       for (final entry in sectionsBySegment.entries)
         MachOSegment(name: entry.key, sections: entry.value.values.toList()),
     ],
+    symbolTables: bySymbolTable.values.toList(),
+    symbols: bySymbol.values.toList(),
   );
 }
 
@@ -569,6 +680,7 @@ class _MachOHeader {
   const _MachOHeader({
     required this.cpuType,
     required this.cpuSubtype,
+    required this.is64Bit,
     required this.commandCount,
     required this.loadCommandsOffset,
     required this.loadCommandsEnd,
@@ -576,6 +688,7 @@ class _MachOHeader {
 
   final int cpuType;
   final int cpuSubtype;
+  final bool is64Bit;
   final int commandCount;
   final int loadCommandsOffset;
   final int loadCommandsEnd;
@@ -598,6 +711,7 @@ _MachOHeader? _readHeader(List<int> bytes) {
   return _MachOHeader(
     cpuType: _readU32(bytes, 4),
     cpuSubtype: _readU32(bytes, 8),
+    is64Bit: is64Bit,
     commandCount: _readU32(bytes, 16),
     loadCommandsOffset: headerSize,
     loadCommandsEnd: _boundedEnd(headerSize, _readU32(bytes, 20), bytes.length),
@@ -699,6 +813,146 @@ MachOSegment? _parseSegmentCommand(
   return MachOSegment(name: segmentName, sections: sections);
 }
 
+List<MachOSymbol> _readSymbolsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSymbolTable> symbolTables,
+}) {
+  final symbols = <MachOSymbol>[];
+  final entrySize = is64Bit ? 16 : 12;
+
+  for (final symbolTable in symbolTables) {
+    final symbolBytesLength = symbolTable.symbolCount * entrySize;
+    if (!_canReadSymbolTable(symbolTable, symbolBytesLength, availableLength)) {
+      continue;
+    }
+
+    final symbolBytes = _readRange(
+      raf,
+      fileOffset + symbolTable.symbolOffset,
+      symbolBytesLength,
+    );
+    final stringBytes = _readRange(
+      raf,
+      fileOffset + symbolTable.stringOffset,
+      symbolTable.stringSize,
+    );
+    symbols.addAll(
+      _parseSymbolEntries(
+        symbolBytes,
+        stringBytes,
+        is64Bit: is64Bit,
+        symbolCount: symbolTable.symbolCount,
+      ),
+    );
+  }
+
+  return symbols;
+}
+
+List<MachOSymbol> _readSymbolsFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSymbolTable> symbolTables,
+}) {
+  final symbols = <MachOSymbol>[];
+  final entrySize = is64Bit ? 16 : 12;
+
+  for (final symbolTable in symbolTables) {
+    final symbolBytesLength = symbolTable.symbolCount * entrySize;
+    if (!_canReadSymbolTable(symbolTable, symbolBytesLength, bytes.length)) {
+      continue;
+    }
+
+    symbols.addAll(
+      _parseSymbolEntries(
+        bytes.sublist(
+          symbolTable.symbolOffset,
+          symbolTable.symbolOffset + symbolBytesLength,
+        ),
+        bytes.sublist(
+          symbolTable.stringOffset,
+          symbolTable.stringOffset + symbolTable.stringSize,
+        ),
+        is64Bit: is64Bit,
+        symbolCount: symbolTable.symbolCount,
+      ),
+    );
+  }
+
+  return symbols;
+}
+
+bool _canReadSymbolTable(
+  MachOSymbolTable symbolTable,
+  int symbolBytesLength,
+  int availableLength,
+) {
+  if (symbolTable.symbolCount <= 0 ||
+      symbolTable.symbolOffset < 0 ||
+      symbolTable.stringOffset < 0 ||
+      symbolTable.stringSize <= 0 ||
+      symbolBytesLength <= 0 ||
+      symbolBytesLength > _maxSymbolTableBytes ||
+      symbolTable.stringSize > _maxStringTableBytes) {
+    return false;
+  }
+
+  return _rangeWithin(
+        symbolTable.symbolOffset,
+        symbolBytesLength,
+        availableLength,
+      ) &&
+      _rangeWithin(
+        symbolTable.stringOffset,
+        symbolTable.stringSize,
+        availableLength,
+      );
+}
+
+List<MachOSymbol> _parseSymbolEntries(
+  List<int> symbolBytes,
+  List<int> stringBytes, {
+  required bool is64Bit,
+  required int symbolCount,
+}) {
+  final symbols = <MachOSymbol>[];
+  final entrySize = is64Bit ? 16 : 12;
+
+  for (var i = 0; i < symbolCount; i += 1) {
+    final offset = i * entrySize;
+    if (offset + entrySize > symbolBytes.length) break;
+
+    final name = _readStringTableString(
+      stringBytes,
+      _readU32(symbolBytes, offset),
+    );
+    if (name == null) continue;
+
+    symbols.add(
+      MachOSymbol(
+        name: name,
+        type: symbolBytes[offset + 4],
+        sectionIndex: symbolBytes[offset + 5],
+        description: _readU16(symbolBytes, offset + 6),
+        value: is64Bit
+            ? _readU64(symbolBytes, offset + 8)
+            : _readU32(symbolBytes, offset + 8),
+      ),
+    );
+  }
+
+  return symbols;
+}
+
+bool _rangeWithin(int offset, int length, int availableLength) {
+  if (offset < 0 || length < 0 || availableLength < 0) return false;
+  final end = offset + length;
+  return end >= offset && end <= availableLength;
+}
+
 String _readFixedString(List<int> bytes, int start, int length) {
   if (start < 0 || start >= bytes.length || length <= 0) return '';
 
@@ -708,6 +962,17 @@ String _readFixedString(List<int> bytes, int start, int length) {
     cursor += 1;
   }
   return latin1.decode(bytes.sublist(start, cursor), allowInvalid: true);
+}
+
+String? _readStringTableString(List<int> bytes, int start) {
+  if (start <= 0 || start >= bytes.length) return null;
+  final value = _readNullTerminatedString(bytes, start, bytes.length);
+  return value.isEmpty ? null : value;
+}
+
+int _readU16(List<int> bytes, int offset) {
+  if (offset + 2 > bytes.length) return 0;
+  return bytes[offset] | (bytes[offset + 1] << 8);
 }
 
 int _readU32(List<int> bytes, int offset) {
@@ -785,9 +1050,12 @@ const _fatMagic = 0xcafebabe;
 const _fatMagic64 = 0xcafebabf;
 const _maxFatArchTableBytes = 64 * 1024;
 const _maxLoadCommandBytes = 8 * 1024 * 1024;
+const _maxStringTableBytes = 16 * 1024 * 1024;
+const _maxSymbolTableBytes = 16 * 1024 * 1024;
 const _mhMagic = 0xfeedface;
 const _mhMagic64 = 0xfeedfacf;
 const _lcSegment = 0x01;
+const _lcSymtab = 0x02;
 const _lcLoadDylib = 0x0c;
 const _lcIdDylib = 0x0d;
 const _lcSegment64 = 0x19;

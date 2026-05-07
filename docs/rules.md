@@ -136,6 +136,8 @@ signature blob or parse embedded entitlements.
 Segment and section names are parsed from `LC_SEGMENT` and `LC_SEGMENT_64` as
 internal parser metadata. They are not emitted as user-facing findings yet, but
 they provide the foundation for future Objective-C and Swift metadata scans.
+Symbol table metadata and symbol names are parsed from `LC_SYMTAB` when the
+symbol and string tables are present in the artifact.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or
