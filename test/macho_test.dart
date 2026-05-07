@@ -76,6 +76,12 @@ void main() {
       expect(report.architectures.single.name, 'arm64');
     });
 
+    test('distinguishes arm64e architecture subtype', () {
+      final report = const MachOParser().parse(thinMachO([], cpuSubtype: 2));
+
+      expect(report.architectures.single.name, 'arm64e');
+    });
+
     test('reads and deduplicates architectures from fat Mach-O slices', () {
       final arm64Slice = thinMachO([], cpuType: 0x0100000c);
       final x8664Slice = thinMachO([], cpuType: 0x01000007);

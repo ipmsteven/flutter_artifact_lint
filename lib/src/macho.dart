@@ -38,8 +38,10 @@ class MachOArchitecture {
   final int cpuType;
   final int cpuSubtype;
 
+  int get normalizedCpuSubtype => cpuSubtype & 0x00ffffff;
+
   String get name => switch (cpuType) {
-    0x0100000c => 'arm64',
+    0x0100000c => normalizedCpuSubtype == 2 ? 'arm64e' : 'arm64',
     0x01000007 => 'x86_64',
     12 => 'arm',
     7 => 'i386',
