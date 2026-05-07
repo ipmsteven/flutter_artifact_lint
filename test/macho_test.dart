@@ -528,6 +528,24 @@ void main() {
       expect(report.linkerOptions.single.values, ['-framework', 'Contacts']);
     });
 
+    test('reads dyld string load commands from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoPathCommand(0x0e, '/usr/lib/dyld'),
+          machoPathCommand(
+            0x27,
+            'DYLD_INSERT_LIBRARIES=@executable_path/Inject.dylib',
+          ),
+        ]),
+      );
+
+      expect(report.dylinkers.single.path, '/usr/lib/dyld');
+      expect(
+        report.dyldEnvironments.single.value,
+        'DYLD_INSERT_LIBRARIES=@executable_path/Inject.dylib',
+      );
+    });
+
     test('reads LC_DATA_IN_CODE entries from the file-backed parser', () {
       final root = Directory.systemTemp.createTempSync('fal_macho_');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -562,6 +580,24 @@ void main() {
         '-framework',
         'UserNotifications',
       ]);
+    });
+
+    test('reads dyld string load commands from the file-backed parser', () {
+      final root = Directory.systemTemp.createTempSync('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(
+          thinMachO([
+            machoPathCommand(0x0e, '/usr/lib/dyld'),
+            machoPathCommand(0x27, 'DYLD_PRINT_STATISTICS=1'),
+          ]),
+        );
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(report.dylinkers.single.path, '/usr/lib/dyld');
+      expect(report.dyldEnvironments.single.value, 'DYLD_PRINT_STATISTICS=1');
     });
 
     test(

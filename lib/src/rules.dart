@@ -179,6 +179,22 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports linker option strings from LC_LINKER_OPTION.',
     fix: 'No action required.',
   ),
+  'ios.macho.dylinker': RuleDefinition(
+    ruleId: 'ios.macho.dylinker',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O dynamic linker',
+    description: 'Reports dynamic linker paths from LC_LOAD_DYLINKER.',
+    fix: 'No action required.',
+  ),
+  'ios.macho.dyld_environment': RuleDefinition(
+    ruleId: 'ios.macho.dyld_environment',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O dyld environment',
+    description: 'Reports dyld environment strings from LC_DYLD_ENVIRONMENT.',
+    fix: 'No action required.',
+  ),
   'ios.macho.code_signature': RuleDefinition(
     ruleId: 'ios.macho.code_signature',
     defaultLevel: FindingLevel.info,

@@ -11,6 +11,8 @@ class MachOReport {
     this.uuids = const [],
     this.sourceVersions = const [],
     this.linkerOptions = const [],
+    this.dylinkers = const [],
+    this.dyldEnvironments = const [],
     this.codeSignatures = const [],
     this.encryptionInfos = const [],
     this.entryPoints = const [],
@@ -47,6 +49,8 @@ class MachOReport {
   final List<MachOUuid> uuids;
   final List<MachOSourceVersion> sourceVersions;
   final List<MachOLinkerOption> linkerOptions;
+  final List<MachODylinker> dylinkers;
+  final List<MachODyldEnvironment> dyldEnvironments;
   final List<MachOCodeSignature> codeSignatures;
   final List<MachOEncryptionInfo> encryptionInfos;
   final List<MachOEntryPoint> entryPoints;
@@ -155,6 +159,18 @@ class MachOLinkerOption {
   const MachOLinkerOption({required this.values});
 
   final List<String> values;
+}
+
+class MachODylinker {
+  const MachODylinker({required this.path});
+
+  final String path;
+}
+
+class MachODyldEnvironment {
+  const MachODyldEnvironment({required this.value});
+
+  final String value;
 }
 
 class MachOCodeSignature {
@@ -588,6 +604,8 @@ class MachOParser {
       thinReport.uuids,
       thinReport.sourceVersions,
       thinReport.linkerOptions,
+      thinReport.dylinkers,
+      thinReport.dyldEnvironments,
       thinReport.codeSignatures,
       thinReport.encryptionInfos,
       thinReport.entryPoints,
@@ -652,6 +670,8 @@ class MachOParser {
     final uuids = <MachOUuid>[];
     final sourceVersions = <MachOSourceVersion>[];
     final linkerOptions = <MachOLinkerOption>[];
+    final dylinkers = <MachODylinker>[];
+    final dyldEnvironments = <MachODyldEnvironment>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -705,6 +725,8 @@ class MachOParser {
       uuids.addAll(sliceReport.uuids);
       sourceVersions.addAll(sliceReport.sourceVersions);
       linkerOptions.addAll(sliceReport.linkerOptions);
+      dylinkers.addAll(sliceReport.dylinkers);
+      dyldEnvironments.addAll(sliceReport.dyldEnvironments);
       codeSignatures.addAll(sliceReport.codeSignatures);
       encryptionInfos.addAll(sliceReport.encryptionInfos);
       entryPoints.addAll(sliceReport.entryPoints);
@@ -742,6 +764,8 @@ class MachOParser {
       uuids,
       sourceVersions,
       linkerOptions,
+      dylinkers,
+      dyldEnvironments,
       codeSignatures,
       encryptionInfos,
       entryPoints,
@@ -971,6 +995,8 @@ class MachOParser {
       report.uuids,
       report.sourceVersions,
       report.linkerOptions,
+      report.dylinkers,
+      report.dyldEnvironments,
       report.codeSignatures,
       report.encryptionInfos,
       report.entryPoints,
@@ -1028,6 +1054,8 @@ class MachOParser {
     final uuids = <MachOUuid>[];
     final sourceVersions = <MachOSourceVersion>[];
     final linkerOptions = <MachOLinkerOption>[];
+    final dylinkers = <MachODylinker>[];
+    final dyldEnvironments = <MachODyldEnvironment>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -1078,6 +1106,8 @@ class MachOParser {
         uuids.addAll(sliceReport.uuids);
         sourceVersions.addAll(sliceReport.sourceVersions);
         linkerOptions.addAll(sliceReport.linkerOptions);
+        dylinkers.addAll(sliceReport.dylinkers);
+        dyldEnvironments.addAll(sliceReport.dyldEnvironments);
         codeSignatures.addAll(sliceReport.codeSignatures);
         encryptionInfos.addAll(sliceReport.encryptionInfos);
         entryPoints.addAll(sliceReport.entryPoints);
@@ -1118,6 +1148,8 @@ class MachOParser {
       uuids,
       sourceVersions,
       linkerOptions,
+      dylinkers,
+      dyldEnvironments,
       codeSignatures,
       encryptionInfos,
       entryPoints,
@@ -1163,6 +1195,8 @@ class MachOParser {
     final uuids = <MachOUuid>[];
     final sourceVersions = <MachOSourceVersion>[];
     final linkerOptions = <MachOLinkerOption>[];
+    final dylinkers = <MachODylinker>[];
+    final dyldEnvironments = <MachODyldEnvironment>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -1341,6 +1375,32 @@ class MachOParser {
         }
       }
 
+      if (command == _lcLoadDylinker && commandSize >= 12) {
+        final path = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 8,
+          minimumStringOffset: 12,
+        );
+        if (path != null) {
+          dylinkers.add(MachODylinker(path: path));
+        }
+      }
+
+      if (command == _lcDyldEnvironment && commandSize >= 12) {
+        final value = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 8,
+          minimumStringOffset: 12,
+        );
+        if (value != null) {
+          dyldEnvironments.add(MachODyldEnvironment(value: value));
+        }
+      }
+
       if (command == _lcCodeSignature && commandSize >= 16) {
         codeSignatures.add(
           MachOCodeSignature(
@@ -1479,6 +1539,8 @@ class MachOParser {
       uuids: uuids,
       sourceVersions: sourceVersions,
       linkerOptions: linkerOptions,
+      dylinkers: dylinkers,
+      dyldEnvironments: dyldEnvironments,
       codeSignatures: codeSignatures,
       encryptionInfos: encryptionInfos,
       entryPoints: entryPoints,
@@ -1518,6 +1580,8 @@ MachOReport _deduplicatedReport(
   List<MachOUuid> uuids = const [],
   List<MachOSourceVersion> sourceVersions = const [],
   List<MachOLinkerOption> linkerOptions = const [],
+  List<MachODylinker> dylinkers = const [],
+  List<MachODyldEnvironment> dyldEnvironments = const [],
   List<MachOCodeSignature> codeSignatures = const [],
   List<MachOEncryptionInfo> encryptionInfos = const [],
   List<MachOEntryPoint> entryPoints = const [],
@@ -1588,6 +1652,16 @@ MachOReport _deduplicatedReport(
   final byLinkerOption = <String, MachOLinkerOption>{};
   for (final linkerOption in linkerOptions) {
     byLinkerOption[linkerOption.values.join('\u0000')] = linkerOption;
+  }
+
+  final byDylinker = <String, MachODylinker>{};
+  for (final dylinker in dylinkers) {
+    byDylinker[dylinker.path] = dylinker;
+  }
+
+  final byDyldEnvironment = <String, MachODyldEnvironment>{};
+  for (final environment in dyldEnvironments) {
+    byDyldEnvironment[environment.value] = environment;
   }
 
   final byCodeSignature = <String, MachOCodeSignature>{};
@@ -1768,6 +1842,8 @@ MachOReport _deduplicatedReport(
     uuids: byUuid.values.toList(),
     sourceVersions: bySourceVersion.values.toList(),
     linkerOptions: byLinkerOption.values.toList(),
+    dylinkers: byDylinker.values.toList(),
+    dyldEnvironments: byDyldEnvironment.values.toList(),
     codeSignatures: byCodeSignature.values.toList(),
     encryptionInfos: byEncryptionInfo.values.toList(),
     entryPoints: byEntryPoint.values.toList(),
@@ -7855,6 +7931,7 @@ const _lcSymtab = 0x02;
 const _lcDysymtab = 0x0b;
 const _lcLoadDylib = 0x0c;
 const _lcIdDylib = 0x0d;
+const _lcLoadDylinker = 0x0e;
 const _lcSegment64 = 0x19;
 const _lcLoadWeakDylib = 0x80000018;
 const _lcUuid = 0x1b;
@@ -7867,6 +7944,7 @@ const _lcDyldInfo = 0x22;
 const _lcDyldInfoOnly = 0x80000022;
 const _lcLoadUpwardDylib = 0x80000023;
 const _lcFunctionStarts = 0x26;
+const _lcDyldEnvironment = 0x27;
 const _lcMain = 0x80000028;
 const _lcDataInCode = 0x29;
 const _lcSourceVersion = 0x2a;

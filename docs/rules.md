@@ -106,6 +106,11 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 
 `ios.macho.linker_option` reports linker option strings from `LC_LINKER_OPTION`.
 
+`ios.macho.dylinker` reports dynamic linker paths from `LC_LOAD_DYLINKER`.
+
+`ios.macho.dyld_environment` reports dyld environment strings from
+`LC_DYLD_ENVIRONMENT`.
+
 `ios.macho.code_signature` reports `LC_CODE_SIGNATURE` offset and size metadata.
 
 `ios.macho.encryption_info` reports `LC_ENCRYPTION_INFO` FairPlay encryption
@@ -143,12 +148,13 @@ The scanner warns when device release artifacts contain simulator architecture
 or simulator platform metadata.
 
 Additional diagnostic metadata is parsed from `LC_RPATH`, `LC_ID_DYLIB`,
-`LC_UUID`, `LC_SOURCE_VERSION`, `LC_LINKER_OPTION`, `LC_CODE_SIGNATURE`, and
-`LC_ENCRYPTION_INFO`, and `LC_MAIN`. `LC_CODE_SIGNATURE` currently reports only
-the linkedit offset and size; it does not validate the signature blob or parse
-embedded entitlements. `LC_ENCRYPTION_INFO` reports FairPlay encryption offsets
-and crypt id metadata; it does not decrypt or validate encrypted content.
-`LC_MAIN` reports the executable entry offset and stack size.
+`LC_UUID`, `LC_SOURCE_VERSION`, `LC_LINKER_OPTION`, `LC_LOAD_DYLINKER`,
+`LC_DYLD_ENVIRONMENT`, `LC_CODE_SIGNATURE`, `LC_ENCRYPTION_INFO`, and
+`LC_MAIN`. `LC_CODE_SIGNATURE` currently reports only the linkedit offset and
+size; it does not validate the signature blob or parse embedded entitlements.
+`LC_ENCRYPTION_INFO` reports FairPlay encryption offsets and crypt id metadata;
+it does not decrypt or validate encrypted content. `LC_MAIN` reports the
+executable entry offset and stack size.
 `LC_FUNCTION_STARTS` is decoded from ULEB128 deltas into function start offsets.
 `LC_DATA_IN_CODE` is decoded into non-instruction ranges in `__text`, including
 data and jump-table entry kinds.

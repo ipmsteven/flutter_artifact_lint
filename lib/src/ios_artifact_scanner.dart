@@ -735,6 +735,8 @@ List<LintFinding> _machoMetadataInfo(EvidenceReport evidence) {
       MachOMetadataKind.uuid => 'ios.macho.uuid',
       MachOMetadataKind.sourceVersion => 'ios.macho.source_version',
       MachOMetadataKind.linkerOption => 'ios.macho.linker_option',
+      MachOMetadataKind.dylinker => 'ios.macho.dylinker',
+      MachOMetadataKind.dyldEnvironment => 'ios.macho.dyld_environment',
       MachOMetadataKind.codeSignature => 'ios.macho.code_signature',
       MachOMetadataKind.encryptionInfo => 'ios.macho.encryption_info',
       MachOMetadataKind.entryPoint => 'ios.macho.entry_point',

@@ -219,6 +219,28 @@ void main() {
       expect(finding.message, contains('-framework'));
       expect(finding.message, contains('Contacts'));
     });
+
+    test('reports dyld string load command metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([
+          _machOPathCommand(0x0e, '/usr/lib/dyld'),
+          _machOPathCommand(
+            0x27,
+            'DYLD_INSERT_LIBRARIES=@executable_path/Inject.dylib',
+          ),
+        ]),
+      );
+
+      final dylinkerFinding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.dylinker',
+      );
+      final environmentFinding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.dyld_environment',
+      );
+
+      expect(dylinkerFinding.message, contains('/usr/lib/dyld'));
+      expect(environmentFinding.message, contains('DYLD_INSERT_LIBRARIES'));
+    });
   });
 
   group('Mach-O architecture parser acceptance', () {

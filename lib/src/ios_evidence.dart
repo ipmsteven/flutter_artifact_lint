@@ -62,6 +62,8 @@ enum MachOMetadataKind {
   uuid,
   sourceVersion,
   linkerOption,
+  dylinker,
+  dyldEnvironment,
   codeSignature,
   encryptionInfo,
   entryPoint,
@@ -196,6 +198,26 @@ class IosEvidenceExtractor {
             kind: MachOMetadataKind.linkerOption,
             sourcePath: entity.path,
             value: linkerOption.values.join(' '),
+          ),
+        );
+      }
+
+      for (final dylinker in machoReport.dylinkers) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.dylinker,
+            sourcePath: entity.path,
+            value: dylinker.path,
+          ),
+        );
+      }
+
+      for (final environment in machoReport.dyldEnvironments) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.dyldEnvironment,
+            sourcePath: entity.path,
+            value: environment.value,
           ),
         );
       }
