@@ -400,10 +400,45 @@ class MachODyldInfo {
 }
 
 class MachOChainedFixups {
-  const MachOChainedFixups({required this.dataOffset, required this.dataSize});
+  const MachOChainedFixups({
+    required this.dataOffset,
+    required this.dataSize,
+    this.fixupsVersion,
+    this.startsOffset,
+    this.importsOffset,
+    this.symbolsOffset,
+    this.importsCount,
+    this.importsFormat,
+    this.symbolsFormat,
+    this.segments = const [],
+  });
 
   final int dataOffset;
   final int dataSize;
+  final int? fixupsVersion;
+  final int? startsOffset;
+  final int? importsOffset;
+  final int? symbolsOffset;
+  final int? importsCount;
+  final int? importsFormat;
+  final int? symbolsFormat;
+  final List<MachOChainedFixupSegment> segments;
+}
+
+class MachOChainedFixupSegment {
+  const MachOChainedFixupSegment({
+    required this.pageSize,
+    required this.pointerFormat,
+    required this.segmentOffset,
+    required this.maxValidPointer,
+    required this.pageStarts,
+  });
+
+  final int pageSize;
+  final int pointerFormat;
+  final int segmentOffset;
+  final int maxValidPointer;
+  final List<int> pageStarts;
 }
 
 class MachODyldExportsTrie {
@@ -696,11 +731,17 @@ class MachOParser {
       availableLength,
       dyldInfos: report.dyldInfos,
     );
-    final chainedFixupBindSymbols = _readChainedFixupBindSymbolsFromFile(
+    final chainedFixups = _readChainedFixupMetadataFromFile(
       raf,
       fileOffset,
       availableLength,
       chainedFixups: report.chainedFixups,
+    );
+    final chainedFixupBindSymbols = _readChainedFixupBindSymbolsFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      chainedFixups: chainedFixups,
     );
     final dyldExportSymbols = _readDyldExportSymbolsFromFile(
       raf,
@@ -781,7 +822,14 @@ class MachOParser {
       is64Bit: thinIs64Bit,
       segments: report.segments,
     );
-    if (symbols.isEmpty &&
+    final hasChainedFixupMetadata = chainedFixups.any(
+      (chainedFixup) =>
+          chainedFixup.fixupsVersion != null ||
+          chainedFixup.startsOffset != null ||
+          chainedFixup.segments.isNotEmpty,
+    );
+    if (!hasChainedFixupMetadata &&
+        symbols.isEmpty &&
         dyldBindSymbols.isEmpty &&
         chainedFixupBindSymbols.isEmpty &&
         dyldExportSymbols.isEmpty &&
@@ -820,7 +868,7 @@ class MachOParser {
       [...report.swiftFields, ...swiftFields],
       report.dynamicSymbolTables,
       report.dyldInfos,
-      report.chainedFixups,
+      chainedFixups,
       report.dyldExportsTries,
       [
         ...report.dyldBindSymbols,
@@ -1188,9 +1236,13 @@ class MachOParser {
       bytes,
       dyldInfos: dyldInfos,
     );
-    final chainedFixupBindSymbols = _readChainedFixupBindSymbolsFromBytes(
+    final chainedFixupMetadata = _readChainedFixupMetadataFromBytes(
       bytes,
       chainedFixups: chainedFixups,
+    );
+    final chainedFixupBindSymbols = _readChainedFixupBindSymbolsFromBytes(
+      bytes,
+      chainedFixups: chainedFixupMetadata,
     );
     final dyldExportSymbols = _readDyldExportSymbolsFromBytes(
       bytes,
@@ -1263,7 +1315,7 @@ class MachOParser {
       swiftFields: swiftFields,
       dynamicSymbolTables: dynamicSymbolTables,
       dyldInfos: dyldInfos,
-      chainedFixups: chainedFixups,
+      chainedFixups: chainedFixupMetadata,
       dyldExportsTries: dyldExportsTries,
       dyldBindSymbols: [...dyldBindSymbols, ...chainedFixupBindSymbols],
       dyldExportSymbols: dyldExportSymbols,
@@ -1434,7 +1486,13 @@ MachOReport _deduplicatedReport(
 
   final byChainedFixups = <String, MachOChainedFixups>{};
   for (final chainedFixup in chainedFixups) {
-    byChainedFixups['${chainedFixup.dataOffset}|${chainedFixup.dataSize}'] =
+    final segmentsKey = chainedFixup.segments
+        .map(
+          (segment) =>
+              '${segment.pageSize}:${segment.pointerFormat}:${segment.segmentOffset}:${segment.maxValidPointer}:${segment.pageStarts.join(",")}',
+        )
+        .join(';');
+    byChainedFixups['${chainedFixup.dataOffset}|${chainedFixup.dataSize}|${chainedFixup.fixupsVersion}|${chainedFixup.startsOffset}|${chainedFixup.importsOffset}|${chainedFixup.symbolsOffset}|${chainedFixup.importsCount}|${chainedFixup.importsFormat}|${chainedFixup.symbolsFormat}|$segmentsKey'] =
         chainedFixup;
   }
 
@@ -6345,6 +6403,134 @@ List<MachODyldBindSymbol> _readDyldBindSymbolsFromBytes(
   return symbols;
 }
 
+List<MachOChainedFixups> _readChainedFixupMetadataFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required List<MachOChainedFixups> chainedFixups,
+}) {
+  final result = <MachOChainedFixups>[];
+  for (final chainedFixup in chainedFixups) {
+    if (!_canReadDyldInfoStream(
+      chainedFixup.dataOffset,
+      chainedFixup.dataSize,
+      availableLength,
+    )) {
+      result.add(chainedFixup);
+      continue;
+    }
+
+    result.add(
+      _parseChainedFixupMetadata(
+        _readRange(
+          raf,
+          fileOffset + chainedFixup.dataOffset,
+          chainedFixup.dataSize,
+        ),
+        chainedFixup,
+      ),
+    );
+  }
+  return result;
+}
+
+List<MachOChainedFixups> _readChainedFixupMetadataFromBytes(
+  List<int> bytes, {
+  required List<MachOChainedFixups> chainedFixups,
+}) {
+  final result = <MachOChainedFixups>[];
+  for (final chainedFixup in chainedFixups) {
+    if (!_canReadDyldInfoStream(
+      chainedFixup.dataOffset,
+      chainedFixup.dataSize,
+      bytes.length,
+    )) {
+      result.add(chainedFixup);
+      continue;
+    }
+
+    result.add(
+      _parseChainedFixupMetadata(
+        bytes.sublist(
+          chainedFixup.dataOffset,
+          chainedFixup.dataOffset + chainedFixup.dataSize,
+        ),
+        chainedFixup,
+      ),
+    );
+  }
+  return result;
+}
+
+MachOChainedFixups _parseChainedFixupMetadata(
+  List<int> bytes,
+  MachOChainedFixups command,
+) {
+  if (bytes.length < 28) return command;
+
+  final startsOffset = _readU32(bytes, 4);
+  return MachOChainedFixups(
+    dataOffset: command.dataOffset,
+    dataSize: command.dataSize,
+    fixupsVersion: _readU32(bytes, 0),
+    startsOffset: startsOffset,
+    importsOffset: _readU32(bytes, 8),
+    symbolsOffset: _readU32(bytes, 12),
+    importsCount: _readU32(bytes, 16),
+    importsFormat: _readU32(bytes, 20),
+    symbolsFormat: _readU32(bytes, 24),
+    segments: _parseChainedFixupSegments(bytes, startsOffset),
+  );
+}
+
+List<MachOChainedFixupSegment> _parseChainedFixupSegments(
+  List<int> bytes,
+  int startsOffset,
+) {
+  if (startsOffset <= 0 || !_rangeWithin(startsOffset, 4, bytes.length)) {
+    return const [];
+  }
+
+  final segmentCount = _readU32(bytes, startsOffset);
+  if (segmentCount <= 0 ||
+      segmentCount > _maxChainedFixupSegmentCount ||
+      !_rangeWithin(startsOffset, 4 + segmentCount * 4, bytes.length)) {
+    return const [];
+  }
+
+  final segments = <MachOChainedFixupSegment>[];
+  for (var i = 0; i < segmentCount; i += 1) {
+    final segmentInfoOffset = _readU32(bytes, startsOffset + 4 + i * 4);
+    if (segmentInfoOffset == 0) continue;
+
+    final offset = startsOffset + segmentInfoOffset;
+    if (!_rangeWithin(offset, 22, bytes.length)) continue;
+
+    final size = _readU32(bytes, offset);
+    final pageCount = _readU16(bytes, offset + 20);
+    final pageStartsByteLength = pageCount * 2;
+    if (size < 22 + pageStartsByteLength ||
+        pageCount > _maxChainedFixupPageCount ||
+        !_rangeWithin(offset, size, bytes.length)) {
+      continue;
+    }
+
+    segments.add(
+      MachOChainedFixupSegment(
+        pageSize: _readU16(bytes, offset + 4),
+        pointerFormat: _readU16(bytes, offset + 6),
+        segmentOffset: _readU64(bytes, offset + 8),
+        maxValidPointer: _readU32(bytes, offset + 16),
+        pageStarts: [
+          for (var page = 0; page < pageCount; page += 1)
+            _readU16(bytes, offset + 22 + page * 2),
+        ],
+      ),
+    );
+  }
+  return segments;
+}
+
 List<MachODyldBindSymbol> _readChainedFixupBindSymbolsFromFile(
   RandomAccessFile raf,
   int fileOffset,
@@ -7024,6 +7210,8 @@ const _dyldChainedImportAddend = 2;
 const _dyldChainedImportAddend64 = 3;
 const _dyldChainedSymbolsUncompressed = 0;
 const _dyldChainedSymbolsZlibCompressed = 1;
+const _maxChainedFixupPageCount = 1 << 20;
+const _maxChainedFixupSegmentCount = 4096;
 const _maxDyldExportTrieNodes = 8192;
 const _maxDyldImportCount = 1 << 20;
 const _maxFatArchTableBytes = 64 * 1024;

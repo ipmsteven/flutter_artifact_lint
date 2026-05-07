@@ -154,7 +154,9 @@ bind, weak-bind, and lazy-bind opcode streams.
 Imported symbol names are also parsed from `LC_DYLD_CHAINED_FIXUPS` import
 tables for `DYLD_CHAINED_IMPORT`, `DYLD_CHAINED_IMPORT_ADDEND`, and
 `DYLD_CHAINED_IMPORT_ADDEND64` formats, with uncompressed and zlib-compressed
-symbol string tables.
+symbol string tables. The parser also reads chained fixups header and
+starts-in-segment metadata, including pointer format, page size, segment offset,
+and page starts.
 Exported symbol names are parsed from `LC_DYLD_INFO` and
 `LC_DYLD_INFO_ONLY` export trie streams and from `LC_DYLD_EXPORTS_TRIE`.
 C-string values are parsed from `__cstring`, `__objc_methname`,

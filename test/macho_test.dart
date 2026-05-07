@@ -413,6 +413,73 @@ void main() {
       }
     });
 
+    test('reads LC_DYLD_CHAINED_FIXUPS starts metadata from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithChainedFixupImports([
+          r'_OBJC_CLASS_$_CLLocationManager',
+        ], includeStartsMetadata: true),
+      );
+
+      final chainedFixups = report.chainedFixups.single;
+      expect(chainedFixups.fixupsVersion, 0);
+      expect(chainedFixups.importsCount, 1);
+      expect(chainedFixups.importsFormat, 1);
+      expect(chainedFixups.symbolsFormat, 0);
+      expect(chainedFixups.segments, hasLength(1));
+      expect(chainedFixups.segments.single.pageSize, 0x4000);
+      expect(chainedFixups.segments.single.pointerFormat, 9);
+      expect(chainedFixups.segments.single.segmentOffset, 0x8000);
+      expect(chainedFixups.segments.single.pageStarts, [0x18, 0xffff]);
+    });
+
+    test(
+      'reads LC_DYLD_CHAINED_FIXUPS starts metadata from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithChainedFixupImports(
+              [r'_OBJC_CLASS_$_UNUserNotificationCenter'],
+              includeStartsMetadata: true,
+              paddingBeforeChainedFixups: 4096,
+            ),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(report.chainedFixups.single.segments, hasLength(1));
+        expect(report.chainedFixups.single.segments.single.pointerFormat, 9);
+        expect(report.chainedFixups.single.segments.single.pageStarts, [
+          0x18,
+          0xffff,
+        ]);
+      },
+    );
+
+    test(
+      'reads LC_DYLD_CHAINED_FIXUPS starts metadata without imports from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithChainedFixupImports(
+              const [],
+              includeStartsMetadata: true,
+              paddingBeforeChainedFixups: 4096,
+            ),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(report.chainedFixups.single.importsCount, 0);
+        expect(report.chainedFixups.single.segments, hasLength(1));
+      },
+    );
+
     test(
       'reads compressed LC_DYLD_CHAINED_FIXUPS import symbols from bytes',
       () {
@@ -1506,12 +1573,14 @@ List<int> thinMachOWithChainedFixupImports(
   int symbolsFormat = 0,
   bool corruptCompressedSymbols = false,
   int paddingBeforeChainedFixups = 0,
+  bool includeStartsMetadata = false,
 }) {
   final chainedFixups = chainedFixupsPayload(
     symbols,
     importFormat: importFormat,
     corruptCompressedSymbols: corruptCompressedSymbols,
     symbolsFormat: symbolsFormat,
+    includeStartsMetadata: includeStartsMetadata,
   );
   const commandsSize = 16;
   final dataOffset = 32 + commandsSize + paddingBeforeChainedFixups;
@@ -3984,6 +4053,7 @@ List<int> chainedFixupsPayload(
   required int importFormat,
   int symbolsFormat = 0,
   bool corruptCompressedSymbols = false,
+  bool includeStartsMetadata = false,
 }) {
   final symbolStrings = switch (symbolsFormat) {
     0 => cStringBytes(symbols),
@@ -4001,17 +4071,22 @@ List<int> chainedFixupsPayload(
     _ => throw ArgumentError.value(importFormat, 'importFormat'),
   };
   const headerSize = 28;
-  final importsOffset = headerSize;
+  final starts = includeStartsMetadata
+      ? chainedStartsInImagePayload()
+      : <int>[];
+  final startsOffset = starts.isEmpty ? 0 : headerSize;
+  final importsOffset = headerSize + starts.length;
   final symbolsOffset = importsOffset + entrySize * symbols.length;
 
   return [
     ...u32(0), // fixups_version
-    ...u32(0), // starts_offset
+    ...u32(startsOffset),
     ...u32(importsOffset),
     ...u32(symbolsOffset),
     ...u32(symbols.length),
     ...u32(importFormat),
     ...u32(symbolsFormat),
+    ...starts,
     for (final symbolOffset in symbolOffsets)
       ...chainedImportEntry(
         importFormat: importFormat,
@@ -4032,6 +4107,21 @@ List<int> chainedImportEntry({
     3 => [...u64(1 | (nameOffset << 32)), ...u64(0)],
     _ => throw ArgumentError.value(importFormat, 'importFormat'),
   };
+}
+
+List<int> chainedStartsInImagePayload() {
+  const pageStarts = [0x18, 0xffff];
+  final segmentStarts = [
+    ...u32(22 + pageStarts.length * 2),
+    ...u16(0x4000),
+    ...u16(9),
+    ...u64(0x8000),
+    ...u32(0),
+    ...u16(pageStarts.length),
+    for (final pageStart in pageStarts) ...u16(pageStart),
+  ];
+
+  return [...u32(1), ...u32(8), ...segmentStarts];
 }
 
 List<int> nlist64Bytes(int stringIndex) {
