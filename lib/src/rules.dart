@@ -227,6 +227,15 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports target triples from LC_TARGET_TRIPLE.',
     fix: 'No action required.',
   ),
+  'ios.macho.sub_command': RuleDefinition(
+    ruleId: 'ios.macho.sub_command',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O sub command',
+    description:
+        'Reports LC_SUB_* framework and library relationship metadata.',
+    fix: 'No action required.',
+  ),
   'ios.macho.code_signature': RuleDefinition(
     ruleId: 'ios.macho.code_signature',
     defaultLevel: FindingLevel.info,

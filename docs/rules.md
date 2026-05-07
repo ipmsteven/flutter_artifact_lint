@@ -121,6 +121,9 @@ sizes.
 
 `ios.macho.target_triple` reports target triples from `LC_TARGET_TRIPLE`.
 
+`ios.macho.sub_command` reports framework and library relationship metadata
+from `LC_SUB_*` load commands.
+
 `ios.macho.code_signature` reports `LC_CODE_SIGNATURE` offset and size metadata.
 
 `ios.macho.encryption_info` reports `LC_ENCRYPTION_INFO` FairPlay encryption

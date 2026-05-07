@@ -600,6 +600,24 @@ void main() {
       expect(report.targetTriples.single.value, 'arm64e-apple-ios17.0');
     });
 
+    test('reads LC_SUB_* metadata from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoPathCommand(0x12, 'UIKit'),
+          machoPathCommand(0x14, 'MyClient'),
+          machoPathCommand(0x15, 'libobjc'),
+        ]),
+      );
+
+      expect(report.subCommands, hasLength(3));
+      expect(report.subCommands.first.commandName, 'LC_SUB_FRAMEWORK');
+      expect(report.subCommands.first.value, 'UIKit');
+      expect(report.subCommands[1].commandName, 'LC_SUB_CLIENT');
+      expect(report.subCommands[1].value, 'MyClient');
+      expect(report.subCommands.last.commandName, 'LC_SUB_LIBRARY');
+      expect(report.subCommands.last.value, 'libobjc');
+    });
+
     test('reads generic linkedit data commands from bytes', () {
       final report = const MachOParser().parse(
         thinMachO([
@@ -713,6 +731,19 @@ void main() {
         report.targetTriples.single.value,
         'arm64-apple-ios17.0-simulator',
       );
+    });
+
+    test('reads LC_SUB_* metadata from the file-backed parser', () {
+      final root = Directory.systemTemp.createTempSync('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(thinMachO([machoPathCommand(0x13, 'CoreServices')]));
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(report.subCommands.single.commandName, 'LC_SUB_UMBRELLA');
+      expect(report.subCommands.single.value, 'CoreServices');
     });
 
     test(

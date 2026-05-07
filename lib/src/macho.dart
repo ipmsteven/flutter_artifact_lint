@@ -17,6 +17,7 @@ class MachOReport {
     this.notes = const [],
     this.linkeditData = const [],
     this.targetTriples = const [],
+    this.subCommands = const [],
     this.codeSignatures = const [],
     this.encryptionInfos = const [],
     this.entryPoints = const [],
@@ -59,6 +60,7 @@ class MachOReport {
   final List<MachONote> notes;
   final List<MachOLinkeditData> linkeditData;
   final List<MachOTargetTriple> targetTriples;
+  final List<MachOSubCommand> subCommands;
   final List<MachOCodeSignature> codeSignatures;
   final List<MachOEncryptionInfo> encryptionInfos;
   final List<MachOEntryPoint> entryPoints;
@@ -271,6 +273,21 @@ class MachOTargetTriple {
   const MachOTargetTriple({required this.value});
 
   final String value;
+}
+
+class MachOSubCommand {
+  const MachOSubCommand({required this.command, required this.value});
+
+  final int command;
+  final String value;
+
+  String get commandName => switch (command) {
+    _lcSubFramework => 'LC_SUB_FRAMEWORK',
+    _lcSubUmbrella => 'LC_SUB_UMBRELLA',
+    _lcSubClient => 'LC_SUB_CLIENT',
+    _lcSubLibrary => 'LC_SUB_LIBRARY',
+    _ => 'LC 0x${command.toRadixString(16)}',
+  };
 }
 
 class MachOCodeSignature {
@@ -710,6 +727,7 @@ class MachOParser {
       thinReport.notes,
       thinReport.linkeditData,
       thinReport.targetTriples,
+      thinReport.subCommands,
       thinReport.codeSignatures,
       thinReport.encryptionInfos,
       thinReport.entryPoints,
@@ -780,6 +798,7 @@ class MachOParser {
     final notes = <MachONote>[];
     final linkeditData = <MachOLinkeditData>[];
     final targetTriples = <MachOTargetTriple>[];
+    final subCommands = <MachOSubCommand>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -839,6 +858,7 @@ class MachOParser {
       notes.addAll(sliceReport.notes);
       linkeditData.addAll(sliceReport.linkeditData);
       targetTriples.addAll(sliceReport.targetTriples);
+      subCommands.addAll(sliceReport.subCommands);
       codeSignatures.addAll(sliceReport.codeSignatures);
       encryptionInfos.addAll(sliceReport.encryptionInfos);
       entryPoints.addAll(sliceReport.entryPoints);
@@ -882,6 +902,7 @@ class MachOParser {
       notes,
       linkeditData,
       targetTriples,
+      subCommands,
       codeSignatures,
       encryptionInfos,
       entryPoints,
@@ -1117,6 +1138,7 @@ class MachOParser {
       report.notes,
       report.linkeditData,
       report.targetTriples,
+      report.subCommands,
       report.codeSignatures,
       report.encryptionInfos,
       report.entryPoints,
@@ -1180,6 +1202,7 @@ class MachOParser {
     final notes = <MachONote>[];
     final linkeditData = <MachOLinkeditData>[];
     final targetTriples = <MachOTargetTriple>[];
+    final subCommands = <MachOSubCommand>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -1236,6 +1259,7 @@ class MachOParser {
         notes.addAll(sliceReport.notes);
         linkeditData.addAll(sliceReport.linkeditData);
         targetTriples.addAll(sliceReport.targetTriples);
+        subCommands.addAll(sliceReport.subCommands);
         codeSignatures.addAll(sliceReport.codeSignatures);
         encryptionInfos.addAll(sliceReport.encryptionInfos);
         entryPoints.addAll(sliceReport.entryPoints);
@@ -1282,6 +1306,7 @@ class MachOParser {
       notes,
       linkeditData,
       targetTriples,
+      subCommands,
       codeSignatures,
       encryptionInfos,
       entryPoints,
@@ -1339,6 +1364,7 @@ class MachOParser {
     final notes = <MachONote>[];
     final linkeditData = <MachOLinkeditData>[];
     final targetTriples = <MachOTargetTriple>[];
+    final subCommands = <MachOSubCommand>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
@@ -1584,6 +1610,19 @@ class MachOParser {
         }
       }
 
+      if (_isSubCommand(command) && commandSize >= 12) {
+        final value = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 8,
+          minimumStringOffset: 12,
+        );
+        if (value != null) {
+          subCommands.add(MachOSubCommand(command: command, value: value));
+        }
+      }
+
       if (command == _lcCodeSignature && commandSize >= 16) {
         codeSignatures.add(
           MachOCodeSignature(
@@ -1728,6 +1767,7 @@ class MachOParser {
       notes: notes,
       linkeditData: linkeditData,
       targetTriples: targetTriples,
+      subCommands: subCommands,
       codeSignatures: codeSignatures,
       encryptionInfos: encryptionInfos,
       entryPoints: entryPoints,
@@ -1773,6 +1813,7 @@ MachOReport _deduplicatedReport(
   List<MachONote> notes = const [],
   List<MachOLinkeditData> linkeditData = const [],
   List<MachOTargetTriple> targetTriples = const [],
+  List<MachOSubCommand> subCommands = const [],
   List<MachOCodeSignature> codeSignatures = const [],
   List<MachOEncryptionInfo> encryptionInfos = const [],
   List<MachOEntryPoint> entryPoints = const [],
@@ -1877,6 +1918,11 @@ MachOReport _deduplicatedReport(
   final byTargetTriple = <String, MachOTargetTriple>{};
   for (final triple in targetTriples) {
     byTargetTriple[triple.value] = triple;
+  }
+
+  final bySubCommand = <String, MachOSubCommand>{};
+  for (final command in subCommands) {
+    bySubCommand['${command.command}|${command.value}'] = command;
   }
 
   final byCodeSignature = <String, MachOCodeSignature>{};
@@ -2063,6 +2109,7 @@ MachOReport _deduplicatedReport(
     notes: byNote.values.toList(),
     linkeditData: byLinkeditData.values.toList(),
     targetTriples: byTargetTriple.values.toList(),
+    subCommands: bySubCommand.values.toList(),
     codeSignatures: byCodeSignature.values.toList(),
     encryptionInfos: byEncryptionInfo.values.toList(),
     entryPoints: byEntryPoint.values.toList(),
@@ -2228,6 +2275,15 @@ bool _isGenericLinkeditDataCommand(int command) {
     _lcAtomInfo,
     _lcFunctionVariants,
     _lcFunctionVariantFixups,
+  }.contains(command);
+}
+
+bool _isSubCommand(int command) {
+  return {
+    _lcSubFramework,
+    _lcSubUmbrella,
+    _lcSubClient,
+    _lcSubLibrary,
   }.contains(command);
 }
 
@@ -8221,6 +8277,10 @@ const _lcDysymtab = 0x0b;
 const _lcLoadDylib = 0x0c;
 const _lcIdDylib = 0x0d;
 const _lcLoadDylinker = 0x0e;
+const _lcSubFramework = 0x12;
+const _lcSubUmbrella = 0x13;
+const _lcSubClient = 0x14;
+const _lcSubLibrary = 0x15;
 const _lcSegment64 = 0x19;
 const _lcLoadWeakDylib = 0x80000018;
 const _lcUuid = 0x1b;

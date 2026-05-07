@@ -68,6 +68,7 @@ enum MachOMetadataKind {
   note,
   linkeditData,
   targetTriple,
+  subCommand,
   codeSignature,
   encryptionInfo,
   entryPoint,
@@ -262,6 +263,16 @@ class IosEvidenceExtractor {
             kind: MachOMetadataKind.targetTriple,
             sourcePath: entity.path,
             value: triple.value,
+          ),
+        );
+      }
+
+      for (final subCommand in machoReport.subCommands) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.subCommand,
+            sourcePath: entity.path,
+            value: '${subCommand.commandName}: ${subCommand.value}',
           ),
         );
       }

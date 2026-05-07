@@ -283,6 +283,19 @@ void main() {
       expect(finding.message, contains('arm64e-apple-ios17.0'));
     });
 
+    test('reports LC_SUB_* metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([_machOPathCommand(0x14, 'MyClient')]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.sub_command',
+      );
+
+      expect(finding.message, contains('LC_SUB_CLIENT'));
+      expect(finding.message, contains('MyClient'));
+    });
+
     test('reports generic linkedit data metadata', () async {
       final result = await _scanAppWithMainBinary(
         _machOBytes([

@@ -745,6 +745,7 @@ List<LintFinding> _machoMetadataInfo(EvidenceReport evidence) {
       MachOMetadataKind.note => 'ios.macho.note',
       MachOMetadataKind.linkeditData => 'ios.macho.linkedit_data',
       MachOMetadataKind.targetTriple => 'ios.macho.target_triple',
+      MachOMetadataKind.subCommand => 'ios.macho.sub_command',
       MachOMetadataKind.codeSignature => 'ios.macho.code_signature',
       MachOMetadataKind.encryptionInfo => 'ios.macho.encryption_info',
       MachOMetadataKind.entryPoint => 'ios.macho.entry_point',
