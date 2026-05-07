@@ -278,6 +278,14 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports LC_THREAD and LC_UNIXTHREAD state flavor metadata.',
     fix: 'No action required.',
   ),
+  'ios.macho.legacy_command': RuleDefinition(
+    ruleId: 'ios.macho.legacy_command',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O legacy command',
+    description: 'Reports obsolete or reserved Mach-O load command metadata.',
+    fix: 'No action required.',
+  ),
   'ios.macho.routines': RuleDefinition(
     ruleId: 'ios.macho.routines',
     defaultLevel: FindingLevel.info,

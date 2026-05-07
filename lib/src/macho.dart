@@ -23,6 +23,7 @@ class MachOReport {
     this.encryptionInfos = const [],
     this.entryPoints = const [],
     this.threadCommands = const [],
+    this.legacyCommands = const [],
     this.routines = const [],
     this.twolevelHints = const [],
     this.prebindChecksums = const [],
@@ -71,6 +72,7 @@ class MachOReport {
   final List<MachOEncryptionInfo> encryptionInfos;
   final List<MachOEntryPoint> entryPoints;
   final List<MachOThreadCommand> threadCommands;
+  final List<MachOLegacyCommand> legacyCommands;
   final List<MachORoutines> routines;
   final List<MachOTwolevelHints> twolevelHints;
   final List<MachOPrebindChecksum> prebindChecksums;
@@ -365,6 +367,41 @@ class MachOThreadState {
 
   final int flavor;
   final int count;
+}
+
+class MachOLegacyCommand {
+  const MachOLegacyCommand({
+    required this.command,
+    this.path,
+    this.offset,
+    this.size,
+    this.minorVersion,
+    this.headerAddress,
+    this.moduleCount,
+    this.linkedModules,
+    this.strings = const [],
+  });
+
+  final int command;
+  final String? path;
+  final int? offset;
+  final int? size;
+  final int? minorVersion;
+  final int? headerAddress;
+  final int? moduleCount;
+  final String? linkedModules;
+  final List<String> strings;
+
+  String get commandName => switch (command) {
+    _lcSymseg => 'LC_SYMSEG',
+    _lcLoadFvmlib => 'LC_LOADFVMLIB',
+    _lcIdFvmlib => 'LC_IDFVMLIB',
+    _lcIdent => 'LC_IDENT',
+    _lcFvmFile => 'LC_FVMFILE',
+    _lcPrepage => 'LC_PREPAGE',
+    _lcPreboundDylib => 'LC_PREBOUND_DYLIB',
+    _ => 'LC 0x${command.toRadixString(16)}',
+  };
 }
 
 class MachORoutines {
@@ -813,6 +850,7 @@ class MachOParser {
       thinReport.encryptionInfos,
       thinReport.entryPoints,
       thinReport.threadCommands,
+      thinReport.legacyCommands,
       thinReport.routines,
       thinReport.twolevelHints,
       thinReport.prebindChecksums,
@@ -889,6 +927,7 @@ class MachOParser {
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
     final threadCommands = <MachOThreadCommand>[];
+    final legacyCommands = <MachOLegacyCommand>[];
     final routines = <MachORoutines>[];
     final twolevelHints = <MachOTwolevelHints>[];
     final prebindChecksums = <MachOPrebindChecksum>[];
@@ -954,6 +993,7 @@ class MachOParser {
       encryptionInfos.addAll(sliceReport.encryptionInfos);
       entryPoints.addAll(sliceReport.entryPoints);
       threadCommands.addAll(sliceReport.threadCommands);
+      legacyCommands.addAll(sliceReport.legacyCommands);
       routines.addAll(sliceReport.routines);
       twolevelHints.addAll(sliceReport.twolevelHints);
       prebindChecksums.addAll(sliceReport.prebindChecksums);
@@ -1003,6 +1043,7 @@ class MachOParser {
       encryptionInfos,
       entryPoints,
       threadCommands,
+      legacyCommands,
       routines,
       twolevelHints,
       prebindChecksums,
@@ -1244,6 +1285,7 @@ class MachOParser {
       report.encryptionInfos,
       report.entryPoints,
       report.threadCommands,
+      report.legacyCommands,
       report.routines,
       report.twolevelHints,
       report.prebindChecksums,
@@ -1313,6 +1355,7 @@ class MachOParser {
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
     final threadCommands = <MachOThreadCommand>[];
+    final legacyCommands = <MachOLegacyCommand>[];
     final routines = <MachORoutines>[];
     final twolevelHints = <MachOTwolevelHints>[];
     final prebindChecksums = <MachOPrebindChecksum>[];
@@ -1375,6 +1418,7 @@ class MachOParser {
         encryptionInfos.addAll(sliceReport.encryptionInfos);
         entryPoints.addAll(sliceReport.entryPoints);
         threadCommands.addAll(sliceReport.threadCommands);
+        legacyCommands.addAll(sliceReport.legacyCommands);
         routines.addAll(sliceReport.routines);
         twolevelHints.addAll(sliceReport.twolevelHints);
         prebindChecksums.addAll(sliceReport.prebindChecksums);
@@ -1427,6 +1471,7 @@ class MachOParser {
       encryptionInfos,
       entryPoints,
       threadCommands,
+      legacyCommands,
       routines,
       twolevelHints,
       prebindChecksums,
@@ -1490,6 +1535,7 @@ class MachOParser {
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
     final threadCommands = <MachOThreadCommand>[];
+    final legacyCommands = <MachOLegacyCommand>[];
     final routines = <MachORoutines>[];
     final twolevelHints = <MachOTwolevelHints>[];
     final prebindChecksums = <MachOPrebindChecksum>[];
@@ -1808,6 +1854,99 @@ class MachOParser {
         );
       }
 
+      if (command == _lcSymseg && commandSize >= 16) {
+        legacyCommands.add(
+          MachOLegacyCommand(
+            command: command,
+            offset: _readU32(bytes, offset + 8),
+            size: _readU32(bytes, offset + 12),
+          ),
+        );
+      }
+
+      if (command == _lcIdent && commandSize > 8) {
+        legacyCommands.add(
+          MachOLegacyCommand(
+            command: command,
+            strings: _readCommandStrings(
+              bytes,
+              offset + 8,
+              offset + commandSize,
+            ),
+          ),
+        );
+      }
+
+      if (_isFvmlibCommand(command) && commandSize >= 20) {
+        final path = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 8,
+          minimumStringOffset: 20,
+        );
+        if (path != null) {
+          legacyCommands.add(
+            MachOLegacyCommand(
+              command: command,
+              path: path,
+              minorVersion: _readU32(bytes, offset + 12),
+              headerAddress: _readU32(bytes, offset + 16),
+            ),
+          );
+        }
+      }
+
+      if (command == _lcFvmFile && commandSize >= 16) {
+        final path = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 8,
+          minimumStringOffset: 16,
+        );
+        if (path != null) {
+          legacyCommands.add(
+            MachOLegacyCommand(
+              command: command,
+              path: path,
+              headerAddress: _readU32(bytes, offset + 12),
+            ),
+          );
+        }
+      }
+
+      if (command == _lcPreboundDylib && commandSize >= 20) {
+        final path = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 8,
+          minimumStringOffset: 20,
+        );
+        final linkedModules = _readCommandString(
+          bytes,
+          commandOffset: offset,
+          commandSize: commandSize,
+          stringOffsetField: 16,
+          minimumStringOffset: 20,
+        );
+        if (path != null) {
+          legacyCommands.add(
+            MachOLegacyCommand(
+              command: command,
+              path: path,
+              moduleCount: _readU32(bytes, offset + 12),
+              linkedModules: linkedModules,
+            ),
+          );
+        }
+      }
+
+      if (command == _lcPrepage && commandSize >= 8) {
+        legacyCommands.add(MachOLegacyCommand(command: command));
+      }
+
       if (command == _lcRoutines && commandSize >= 40) {
         routines.add(
           MachORoutines(
@@ -1965,6 +2104,7 @@ class MachOParser {
       encryptionInfos: encryptionInfos,
       entryPoints: entryPoints,
       threadCommands: threadCommands,
+      legacyCommands: legacyCommands,
       routines: routines,
       twolevelHints: twolevelHints,
       prebindChecksums: prebindChecksums,
@@ -2016,6 +2156,7 @@ MachOReport _deduplicatedReport(
   List<MachOEncryptionInfo> encryptionInfos = const [],
   List<MachOEntryPoint> entryPoints = const [],
   List<MachOThreadCommand> threadCommands = const [],
+  List<MachOLegacyCommand> legacyCommands = const [],
   List<MachORoutines> routines = const [],
   List<MachOTwolevelHints> twolevelHints = const [],
   List<MachOPrebindChecksum> prebindChecksums = const [],
@@ -2157,6 +2298,12 @@ MachOReport _deduplicatedReport(
         .map((state) => '${state.flavor}:${state.count}')
         .join(',');
     byThreadCommand['${threadCommand.command}|$statesKey'] = threadCommand;
+  }
+
+  final byLegacyCommand = <String, MachOLegacyCommand>{};
+  for (final command in legacyCommands) {
+    byLegacyCommand['${command.command}|${command.path}|${command.offset}|${command.size}|${command.minorVersion}|${command.headerAddress}|${command.moduleCount}|${command.linkedModules}|${command.strings.join("\u0000")}'] =
+        command;
   }
 
   final byRoutines = <String, MachORoutines>{};
@@ -2347,6 +2494,7 @@ MachOReport _deduplicatedReport(
     encryptionInfos: byEncryptionInfo.values.toList(),
     entryPoints: byEntryPoint.values.toList(),
     threadCommands: byThreadCommand.values.toList(),
+    legacyCommands: byLegacyCommand.values.toList(),
     routines: byRoutines.values.toList(),
     twolevelHints: byTwolevelHints.values.toList(),
     prebindChecksums: byPrebindChecksum.values.toList(),
@@ -2532,6 +2680,10 @@ bool _isThreadCommand(int command) {
   return command == _lcThread || command == _lcUnixThread;
 }
 
+bool _isFvmlibCommand(int command) {
+  return command == _lcLoadFvmlib || command == _lcIdFvmlib;
+}
+
 bool _isDyldInfoCommand(int command) {
   return command == _lcDyldInfo || command == _lcDyldInfoOnly;
 }
@@ -2579,6 +2731,18 @@ String? _readCommandString(
     commandOffset + commandSize,
   );
   return value.isEmpty ? null : value;
+}
+
+List<String> _readCommandStrings(List<int> bytes, int start, int end) {
+  final values = <String>[];
+  var cursor = start;
+  while (cursor < end) {
+    final value = _readNullTerminatedString(bytes, cursor, end);
+    if (value.isEmpty) break;
+    values.add(value);
+    cursor += latin1.encode(value).length + 1;
+  }
+  return values;
 }
 
 List<String> _readLinkerOptionStrings(
@@ -8538,13 +8702,20 @@ const _mhMagic = 0xfeedface;
 const _mhMagic64 = 0xfeedfacf;
 const _lcSegment = 0x01;
 const _lcSymtab = 0x02;
+const _lcSymseg = 0x03;
 const _lcThread = 0x04;
 const _lcUnixThread = 0x05;
+const _lcLoadFvmlib = 0x06;
+const _lcIdFvmlib = 0x07;
+const _lcIdent = 0x08;
+const _lcFvmFile = 0x09;
+const _lcPrepage = 0x0a;
 const _lcDysymtab = 0x0b;
 const _lcLoadDylib = 0x0c;
 const _lcIdDylib = 0x0d;
 const _lcLoadDylinker = 0x0e;
 const _lcIdDylinker = 0x0f;
+const _lcPreboundDylib = 0x10;
 const _lcRoutines = 0x11;
 const _lcSubFramework = 0x12;
 const _lcSubUmbrella = 0x13;

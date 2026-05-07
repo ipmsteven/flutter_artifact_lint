@@ -751,6 +751,7 @@ List<LintFinding> _machoMetadataInfo(EvidenceReport evidence) {
       MachOMetadataKind.encryptionInfo => 'ios.macho.encryption_info',
       MachOMetadataKind.entryPoint => 'ios.macho.entry_point',
       MachOMetadataKind.thread => 'ios.macho.thread',
+      MachOMetadataKind.legacyCommand => 'ios.macho.legacy_command',
       MachOMetadataKind.routines => 'ios.macho.routines',
       MachOMetadataKind.twolevelHints => 'ios.macho.twolevel_hints',
       MachOMetadataKind.prebindChecksum => 'ios.macho.prebind_checksum',

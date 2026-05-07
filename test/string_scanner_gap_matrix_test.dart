@@ -195,6 +195,27 @@ void main() {
       expect(finding.message, contains('flavor 7 count 4'));
     });
 
+    test('reports legacy Mach-O command metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([
+          _machOPreboundDylibCommand(
+            path: '/usr/lib/libobjc.A.dylib',
+            moduleCount: 3,
+            linkedModules: '101',
+          ),
+        ]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.legacy_command',
+      );
+
+      expect(finding.message, contains('LC_PREBOUND_DYLIB'));
+      expect(finding.message, contains('/usr/lib/libobjc.A.dylib'));
+      expect(finding.message, contains('modules 3'));
+      expect(finding.message, contains('linked modules 101'));
+    });
+
     test(
       'reports routines two-level hints and prebind checksum load command metadata',
       () async {
@@ -737,6 +758,26 @@ List<int> _machOThreadCommand({
     ],
   ];
   return [..._u32(command), ..._u32(8 + payload.length), ...payload];
+}
+
+List<int> _machOPreboundDylibCommand({
+  required String path,
+  required int moduleCount,
+  required String linkedModules,
+}) {
+  final pathBytes = [...latin1.encode(path), 0];
+  final linkedModulesBytes = [...latin1.encode(linkedModules), 0];
+  final linkedModulesOffset = 20 + pathBytes.length;
+  final commandSize = linkedModulesOffset + linkedModulesBytes.length;
+  return [
+    ..._u32(0x10),
+    ..._u32(commandSize),
+    ..._u32(20),
+    ..._u32(moduleCount),
+    ..._u32(linkedModulesOffset),
+    ...pathBytes,
+    ...linkedModulesBytes,
+  ];
 }
 
 List<int> _machORoutines64Command({

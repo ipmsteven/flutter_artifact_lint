@@ -138,6 +138,10 @@ offset, size, and crypt id metadata.
 `ios.macho.thread` reports thread state flavor metadata from `LC_THREAD` and
 `LC_UNIXTHREAD`.
 
+`ios.macho.legacy_command` reports obsolete or reserved load command metadata
+from commands such as `LC_SYMSEG`, `LC_IDENT`, `LC_FVMFILE`, `LC_LOADFVMLIB`,
+and `LC_PREBOUND_DYLIB`.
+
 `ios.macho.routines` reports initialization routine metadata from `LC_ROUTINES`
 and `LC_ROUTINES_64`.
 

@@ -329,6 +329,52 @@ void main() {
       ]);
     });
 
+    test('reads legacy Mach-O command metadata from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoSymsegCommand(offset: 4096, size: 128),
+          machoIdentCommand(['clang-1700', 'ld64']),
+          machoFvmlibCommand(
+            command: 0x06,
+            path: '/System/Library/FixedVM.framework/FixedVM',
+            minorVersion: 0x00010000,
+            headerAddress: 0x2000,
+          ),
+          machoFvmFileCommand(path: '/usr/lib/fvmfile', headerAddress: 0x3000),
+          machoPreboundDylibCommand(
+            path: '/usr/lib/libobjc.A.dylib',
+            moduleCount: 3,
+            linkedModules: '101',
+          ),
+          machoPrepageCommand(),
+        ]),
+      );
+
+      expect(
+        report.legacyCommands.map((command) => command.commandName),
+        containsAll([
+          'LC_SYMSEG',
+          'LC_IDENT',
+          'LC_LOADFVMLIB',
+          'LC_FVMFILE',
+          'LC_PREBOUND_DYLIB',
+          'LC_PREPAGE',
+        ]),
+      );
+      expect(report.legacyCommands[0].offset, 4096);
+      expect(report.legacyCommands[0].size, 128);
+      expect(report.legacyCommands[1].strings, ['clang-1700', 'ld64']);
+      expect(
+        report.legacyCommands[2].path,
+        '/System/Library/FixedVM.framework/FixedVM',
+      );
+      expect(report.legacyCommands[2].minorVersion, 0x00010000);
+      expect(report.legacyCommands[2].headerAddress, 0x2000);
+      expect(report.legacyCommands[3].path, '/usr/lib/fvmfile');
+      expect(report.legacyCommands[4].moduleCount, 3);
+      expect(report.legacyCommands[4].linkedModules, '101');
+    });
+
     test('reads routines two-level hints and prebind checksum metadata', () {
       final report = const MachOParser().parse(
         thinMachO([
@@ -862,6 +908,36 @@ void main() {
       expect(report.threadCommands.single.states.single.flavor, 6);
       expect(report.threadCommands.single.states.single.count, 68);
     });
+
+    test(
+      'reads legacy Mach-O command metadata from the file-backed parser',
+      () {
+        final root = Directory.systemTemp.createTempSync('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachO([
+              machoFvmlibCommand(
+                command: 0x07,
+                path: '/System/Library/FixedVM.framework/FixedVM',
+                minorVersion: 0x00020000,
+                headerAddress: 0x4000,
+              ),
+            ]),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(report.legacyCommands.single.commandName, 'LC_IDFVMLIB');
+        expect(
+          report.legacyCommands.single.path,
+          '/System/Library/FixedVM.framework/FixedVM',
+        );
+        expect(report.legacyCommands.single.minorVersion, 0x00020000);
+        expect(report.legacyCommands.single.headerAddress, 0x4000);
+      },
+    );
 
     test(
       'reads routines two-level hints and prebind checksum metadata from the file-backed parser',
@@ -5172,6 +5248,73 @@ List<int> machoThreadCommand({
   ];
   return [...u32(command), ...u32(8 + payload.length), ...payload];
 }
+
+List<int> machoSymsegCommand({required int offset, required int size}) {
+  return [...u32(0x03), ...u32(16), ...u32(offset), ...u32(size)];
+}
+
+List<int> machoIdentCommand(List<String> strings) {
+  final stringBytes = [
+    for (final string in strings) ...[...latin1.encode(string), 0],
+  ];
+  final commandSize = 8 + stringBytes.length;
+  return [...u32(0x08), ...u32(commandSize), ...stringBytes];
+}
+
+List<int> machoFvmlibCommand({
+  required int command,
+  required String path,
+  required int minorVersion,
+  required int headerAddress,
+}) {
+  final pathBytes = [...latin1.encode(path), 0];
+  final commandSize = 20 + pathBytes.length;
+  return [
+    ...u32(command),
+    ...u32(commandSize),
+    ...u32(20),
+    ...u32(minorVersion),
+    ...u32(headerAddress),
+    ...pathBytes,
+  ];
+}
+
+List<int> machoFvmFileCommand({
+  required String path,
+  required int headerAddress,
+}) {
+  final pathBytes = [...latin1.encode(path), 0];
+  final commandSize = 16 + pathBytes.length;
+  return [
+    ...u32(0x09),
+    ...u32(commandSize),
+    ...u32(16),
+    ...u32(headerAddress),
+    ...pathBytes,
+  ];
+}
+
+List<int> machoPreboundDylibCommand({
+  required String path,
+  required int moduleCount,
+  required String linkedModules,
+}) {
+  final pathBytes = [...latin1.encode(path), 0];
+  final linkedModulesBytes = [...latin1.encode(linkedModules), 0];
+  final linkedModulesOffset = 20 + pathBytes.length;
+  final commandSize = linkedModulesOffset + linkedModulesBytes.length;
+  return [
+    ...u32(0x10),
+    ...u32(commandSize),
+    ...u32(20),
+    ...u32(moduleCount),
+    ...u32(linkedModulesOffset),
+    ...pathBytes,
+    ...linkedModulesBytes,
+  ];
+}
+
+List<int> machoPrepageCommand() => [...u32(0x0a), ...u32(8)];
 
 List<int> machoRoutinesCommand({
   required int initAddress,

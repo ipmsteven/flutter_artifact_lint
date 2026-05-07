@@ -74,6 +74,7 @@ enum MachOMetadataKind {
   encryptionInfo,
   entryPoint,
   thread,
+  legacyCommand,
   routines,
   twolevelHints,
   prebindChecksum,
@@ -331,6 +332,16 @@ class IosEvidenceExtractor {
             kind: MachOMetadataKind.thread,
             sourcePath: entity.path,
             value: _threadCommandValue(threadCommand),
+          ),
+        );
+      }
+
+      for (final legacyCommand in machoReport.legacyCommands) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.legacyCommand,
+            sourcePath: entity.path,
+            value: _legacyCommandValue(legacyCommand),
           ),
         );
       }
@@ -595,6 +606,22 @@ String _threadCommandValue(MachOThreadCommand threadCommand) {
     threadCommand.commandName,
     'states ${threadCommand.states.length}',
     ...states,
+  ].join('; ');
+}
+
+String _legacyCommandValue(MachOLegacyCommand command) {
+  return [
+    command.commandName,
+    if (command.path != null) command.path!,
+    if (command.offset != null) 'offset ${command.offset}',
+    if (command.size != null) 'size ${command.size}',
+    if (command.minorVersion != null) 'minor version ${command.minorVersion}',
+    if (command.headerAddress != null)
+      'header address ${command.headerAddress}',
+    if (command.moduleCount != null) 'modules ${command.moduleCount}',
+    if (command.linkedModules != null)
+      'linked modules ${command.linkedModules}',
+    if (command.strings.isNotEmpty) 'strings ${command.strings.join(", ")}',
   ].join('; ');
 }
 
