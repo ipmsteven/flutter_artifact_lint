@@ -15,6 +15,7 @@ class MachOReport {
     this.symbolTables = const [],
     this.symbols = const [],
     this.sectionStrings = const [],
+    this.swiftTypes = const [],
     this.dynamicSymbolTables = const [],
     this.dyldInfos = const [],
     this.chainedFixups = const [],
@@ -39,6 +40,7 @@ class MachOReport {
   final List<MachOSymbolTable> symbolTables;
   final List<MachOSymbol> symbols;
   final List<MachOSectionString> sectionStrings;
+  final List<MachOSwiftType> swiftTypes;
   final List<MachODynamicSymbolTable> dynamicSymbolTables;
   final List<MachODyldInfo> dyldInfos;
   final List<MachOChainedFixups> chainedFixups;
@@ -166,6 +168,18 @@ class MachOSectionString {
 
   final String sectionName;
   final String value;
+}
+
+class MachOSwiftType {
+  const MachOSwiftType({
+    required this.name,
+    required this.sourceSection,
+    required this.descriptorAddress,
+  });
+
+  final String name;
+  final String sourceSection;
+  final int descriptorAddress;
 }
 
 class MachOObjCSelector {
@@ -357,6 +371,7 @@ class MachOParser {
       thinReport.symbolTables,
       thinReport.symbols,
       thinReport.sectionStrings,
+      thinReport.swiftTypes,
       thinReport.dynamicSymbolTables,
       thinReport.dyldInfos,
       thinReport.chainedFixups,
@@ -409,6 +424,7 @@ class MachOParser {
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
     final sectionStrings = <MachOSectionString>[];
+    final swiftTypes = <MachOSwiftType>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final dyldInfos = <MachODyldInfo>[];
     final chainedFixups = <MachOChainedFixups>[];
@@ -450,6 +466,7 @@ class MachOParser {
       symbolTables.addAll(sliceReport.symbolTables);
       symbols.addAll(sliceReport.symbols);
       sectionStrings.addAll(sliceReport.sectionStrings);
+      swiftTypes.addAll(sliceReport.swiftTypes);
       dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
       dyldInfos.addAll(sliceReport.dyldInfos);
       chainedFixups.addAll(sliceReport.chainedFixups);
@@ -475,6 +492,7 @@ class MachOParser {
       symbolTables,
       symbols,
       sectionStrings,
+      swiftTypes,
       dynamicSymbolTables,
       dyldInfos,
       chainedFixups,
@@ -560,6 +578,12 @@ class MachOParser {
       availableLength,
       segments: report.segments,
     );
+    final swiftTypes = _readSwiftTypesFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      segments: report.segments,
+    );
     final objcSelectors = _readObjCSelectorsFromFile(
       raf,
       fileOffset,
@@ -593,6 +617,7 @@ class MachOParser {
         chainedFixupBindSymbols.isEmpty &&
         dyldExportSymbols.isEmpty &&
         sectionStrings.isEmpty &&
+        swiftTypes.isEmpty &&
         objcSelectors.isEmpty &&
         objcClasses.isEmpty &&
         objcProtocols.isEmpty &&
@@ -613,6 +638,7 @@ class MachOParser {
       report.symbolTables,
       [...report.symbols, ...symbols],
       [...report.sectionStrings, ...sectionStrings],
+      [...report.swiftTypes, ...swiftTypes],
       report.dynamicSymbolTables,
       report.dyldInfos,
       report.chainedFixups,
@@ -658,6 +684,7 @@ class MachOParser {
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
     final sectionStrings = <MachOSectionString>[];
+    final swiftTypes = <MachOSwiftType>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final dyldInfos = <MachODyldInfo>[];
     final chainedFixups = <MachOChainedFixups>[];
@@ -696,6 +723,7 @@ class MachOParser {
         symbolTables.addAll(sliceReport.symbolTables);
         symbols.addAll(sliceReport.symbols);
         sectionStrings.addAll(sliceReport.sectionStrings);
+        swiftTypes.addAll(sliceReport.swiftTypes);
         dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
         dyldInfos.addAll(sliceReport.dyldInfos);
         chainedFixups.addAll(sliceReport.chainedFixups);
@@ -724,6 +752,7 @@ class MachOParser {
       symbolTables,
       symbols,
       sectionStrings,
+      swiftTypes,
       dynamicSymbolTables,
       dyldInfos,
       chainedFixups,
@@ -949,6 +978,7 @@ class MachOParser {
       bytes,
       segments: segments,
     );
+    final swiftTypes = _readSwiftTypesFromBytes(bytes, segments: segments);
     final objcSelectors = _readObjCSelectorsFromBytes(
       bytes,
       is64Bit: header.is64Bit,
@@ -983,6 +1013,7 @@ class MachOParser {
       symbolTables: symbolTables,
       symbols: symbols,
       sectionStrings: sectionStrings,
+      swiftTypes: swiftTypes,
       dynamicSymbolTables: dynamicSymbolTables,
       dyldInfos: dyldInfos,
       chainedFixups: chainedFixups,
@@ -1010,6 +1041,7 @@ MachOReport _deduplicatedReport(
   List<MachOSymbolTable> symbolTables = const [],
   List<MachOSymbol> symbols = const [],
   List<MachOSectionString> sectionStrings = const [],
+  List<MachOSwiftType> swiftTypes = const [],
   List<MachODynamicSymbolTable> dynamicSymbolTables = const [],
   List<MachODyldInfo> dyldInfos = const [],
   List<MachOChainedFixups> chainedFixups = const [],
@@ -1096,6 +1128,12 @@ MachOReport _deduplicatedReport(
         sectionString;
   }
 
+  final bySwiftType = <String, MachOSwiftType>{};
+  for (final swiftType in swiftTypes) {
+    bySwiftType['${swiftType.sourceSection}|${swiftType.name}|${swiftType.descriptorAddress}'] =
+        swiftType;
+  }
+
   final byDynamicSymbolTable = <String, MachODynamicSymbolTable>{};
   for (final dynamicSymbolTable in dynamicSymbolTables) {
     byDynamicSymbolTable['${dynamicSymbolTable.localSymbolIndex}|${dynamicSymbolTable.localSymbolCount}|${dynamicSymbolTable.externalSymbolIndex}|${dynamicSymbolTable.externalSymbolCount}|${dynamicSymbolTable.undefinedSymbolIndex}|${dynamicSymbolTable.undefinedSymbolCount}|${dynamicSymbolTable.indirectSymbolOffset}|${dynamicSymbolTable.indirectSymbolCount}'] =
@@ -1172,6 +1210,7 @@ MachOReport _deduplicatedReport(
     symbolTables: bySymbolTable.values.toList(),
     symbols: bySymbol.values.toList(),
     sectionStrings: bySectionString.values.toList(),
+    swiftTypes: bySwiftType.values.toList(),
     dynamicSymbolTables: byDynamicSymbolTable.values.toList(),
     dyldInfos: byDyldInfo.values.toList(),
     chainedFixups: byChainedFixups.values.toList(),
@@ -1403,6 +1442,50 @@ List<MachOSectionString> _readSectionStringsFromFile(
   }
 
   return sectionStrings;
+}
+
+List<MachOSwiftType> _readSwiftTypesFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required List<MachOSegment> segments,
+}) {
+  final swiftTypes = <MachOSwiftType>[];
+  final allSections = _allSections(segments).toList();
+
+  for (final section in _sectionsNamed(segments, '__swift5_types')) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    final sectionBytes = _readRange(
+      raf,
+      fileOffset + section.fileOffset,
+      section.size,
+    );
+    for (var offset = 0; offset + 4 <= sectionBytes.length; offset += 4) {
+      final entryAddress = section.address + offset;
+      final descriptorAddress = entryAddress + _readI32(sectionBytes, offset);
+      if (descriptorAddress <= 0) continue;
+
+      final name = _readSwiftTypeNameFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        descriptorAddress,
+      );
+      if (name == null) continue;
+
+      swiftTypes.add(
+        MachOSwiftType(
+          name: name,
+          sourceSection: section.displayName,
+          descriptorAddress: descriptorAddress,
+        ),
+      );
+    }
+  }
+
+  return swiftTypes;
 }
 
 List<MachOObjCSelector> _readObjCSelectorsFromFile(
@@ -1756,6 +1839,45 @@ List<MachOSectionString> _readSectionStringsFromBytes(
   }
 
   return sectionStrings;
+}
+
+List<MachOSwiftType> _readSwiftTypesFromBytes(
+  List<int> bytes, {
+  required List<MachOSegment> segments,
+}) {
+  final swiftTypes = <MachOSwiftType>[];
+  final allSections = _allSections(segments).toList();
+
+  for (final section in _sectionsNamed(segments, '__swift5_types')) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    final sectionBytes = bytes.sublist(
+      section.fileOffset,
+      section.fileOffset + section.size,
+    );
+    for (var offset = 0; offset + 4 <= sectionBytes.length; offset += 4) {
+      final entryAddress = section.address + offset;
+      final descriptorAddress = entryAddress + _readI32(sectionBytes, offset);
+      if (descriptorAddress <= 0) continue;
+
+      final name = _readSwiftTypeNameFromBytes(
+        bytes,
+        allSections,
+        descriptorAddress,
+      );
+      if (name == null) continue;
+
+      swiftTypes.add(
+        MachOSwiftType(
+          name: name,
+          sourceSection: section.displayName,
+          descriptorAddress: descriptorAddress,
+        ),
+      );
+    }
+  }
+
+  return swiftTypes;
 }
 
 List<MachOObjCMethod> _readObjCMethodsFromBytes(
@@ -3012,6 +3134,59 @@ int? _readSmallObjCMethodNameAddressFromBytes(
     nameReferenceAddress,
     is64Bit: is64Bit,
   );
+}
+
+String? _readSwiftTypeNameFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength,
+  List<MachOSection> allSections,
+  int descriptorAddress,
+) {
+  final descriptorPrefix = _readBytesAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    descriptorAddress,
+    12,
+  );
+  if (descriptorPrefix == null) return null;
+
+  final nameAddress = descriptorAddress + 8 + _readI32(descriptorPrefix, 8);
+  final name = _readCStringAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    nameAddress,
+  );
+  return _isPlausibleSwiftTypeName(name) ? name : null;
+}
+
+String? _readSwiftTypeNameFromBytes(
+  List<int> bytes,
+  List<MachOSection> allSections,
+  int descriptorAddress,
+) {
+  final descriptorPrefix = _readBytesAtAddressFromBytes(
+    bytes,
+    allSections,
+    descriptorAddress,
+    12,
+  );
+  if (descriptorPrefix == null) return null;
+
+  final nameAddress = descriptorAddress + 8 + _readI32(descriptorPrefix, 8);
+  final name = _readCStringAtAddressFromBytes(bytes, allSections, nameAddress);
+  return _isPlausibleSwiftTypeName(name) ? name : null;
+}
+
+bool _isPlausibleSwiftTypeName(String? value) {
+  if (value == null || value.isEmpty || value.length > 512) return false;
+  return value.codeUnits.every((codeUnit) {
+    return codeUnit >= 0x20 && codeUnit != 0x7f;
+  });
 }
 
 Iterable<MachOSection> _stringSections(List<MachOSegment> segments) sync* {

@@ -195,6 +195,12 @@ class IosEvidenceExtractor {
         }
       }
 
+      for (final swiftType in machoReport.swiftTypes) {
+        for (final token in _matchedTokens(swiftType.name, tokens)) {
+          addEvidence(token, '${entity.path}#${swiftType.sourceSection}');
+        }
+      }
+
       for (final symbol in machoReport.symbols) {
         for (final token in _matchedTokens(symbol.name, tokens)) {
           addEvidence(token, '${entity.path}#LC_SYMTAB');

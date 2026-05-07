@@ -104,6 +104,29 @@ void main() {
   );
 
   test(
+    'reports parsed Swift type descriptor sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithSwiftTypeDescriptors(['PermissionState']),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['PermissionState'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor(['PermissionState'])['PermissionState'],
+        contains('${binary.path}#__TEXT.__swift5_types'),
+      );
+    },
+  );
+
+  test(
     'reports parsed Mach-O symbol table sources for token evidence',
     () async {
       final root = await Directory.systemTemp.createTemp('fal_evidence_');
@@ -349,6 +372,62 @@ List<int> thinMachOWithCStringSection({
     ...u32(0),
     ...command,
     ...sectionData,
+  ];
+}
+
+List<int> thinMachOWithSwiftTypeDescriptors(List<String> typeNames) {
+  final typesAddress = 0x100000100;
+  final descriptorAddress = 0x100001000;
+  final descriptorData = <int>[];
+  final typeEntries = <int>[];
+
+  for (var i = 0; i < typeNames.length; i += 1) {
+    final entryAddress = typesAddress + i * 4;
+    final currentDescriptorAddress = descriptorAddress + descriptorData.length;
+    final nameAddress = currentDescriptorAddress + 16;
+    typeEntries.addAll(u32(currentDescriptorAddress - entryAddress));
+    descriptorData.addAll([
+      ...u32(0),
+      ...u32(0),
+      ...u32(nameAddress - (currentDescriptorAddress + 8)),
+      ...u32(0),
+      ...latin1.encode(typeNames[i]),
+      0,
+    ]);
+  }
+
+  final commandSize = 72 + 2 * 80;
+  final typesOffset = 32 + commandSize;
+  final descriptorOffset = typesOffset + typeEntries.length;
+  final command = machoSegment64AddressCommand('__TEXT', [
+    (
+      name: '__swift5_types',
+      segmentName: '__TEXT',
+      address: typesAddress,
+      fileOffset: typesOffset,
+      size: typeEntries.length,
+    ),
+    (
+      name: '__const',
+      segmentName: '__TEXT',
+      address: descriptorAddress,
+      fileOffset: descriptorOffset,
+      size: descriptorData.length,
+    ),
+  ]);
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(1),
+    ...u32(command.length),
+    ...u32(0),
+    ...u32(0),
+    ...command,
+    ...typeEntries,
+    ...descriptorData,
   ];
 }
 

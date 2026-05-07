@@ -529,6 +529,21 @@ void main() {
       );
     });
 
+    test('resolves Swift type descriptors from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithSwiftTypeDescriptors(['PermissionState', 'CameraPurpose']),
+      );
+
+      expect(
+        report.swiftTypes.map((swiftType) => swiftType.name),
+        containsAll(['PermissionState', 'CameraPurpose']),
+      );
+      expect(
+        report.swiftTypes.map((swiftType) => swiftType.sourceSection),
+        everyElement('__TEXT.__swift5_types'),
+      );
+    });
+
     test('reads C strings from the file-backed parser', () async {
       final root = await Directory.systemTemp.createTemp('fal_macho_');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -1086,6 +1101,59 @@ List<int> thinMachOWithCStringSection({
     ...command,
     ...List.filled(paddingBeforeStrings, 0),
     ...sectionData,
+  ];
+}
+
+List<int> thinMachOWithSwiftTypeDescriptors(
+  List<String> typeNames, {
+  int paddingBeforeData = 0,
+}) {
+  final typesAddress = 0x100000100;
+  final descriptorAddress = 0x100001000;
+  final descriptorData = <int>[];
+  final typeEntries = <int>[];
+
+  for (var i = 0; i < typeNames.length; i += 1) {
+    final entryAddress = typesAddress + i * 4;
+    final currentDescriptorAddress = descriptorAddress + descriptorData.length;
+    final nameAddress = currentDescriptorAddress + 16;
+    typeEntries.addAll(u32(currentDescriptorAddress - entryAddress));
+    descriptorData.addAll([
+      ...u32(0), // flags
+      ...u32(0), // parent
+      ...u32(nameAddress - (currentDescriptorAddress + 8)),
+      ...u32(0), // access function
+      ...latin1.encode(typeNames[i]),
+      0,
+    ]);
+  }
+
+  final commandSize = 72 + 2 * 80;
+  final typesOffset = 32 + commandSize + paddingBeforeData;
+  final descriptorOffset = typesOffset + typeEntries.length;
+  final command = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__swift5_types',
+      segmentName: '__TEXT',
+      address: typesAddress,
+      fileOffset: typesOffset,
+      size: typeEntries.length,
+    ),
+    (
+      name: '__const',
+      segmentName: '__TEXT',
+      address: descriptorAddress,
+      fileOffset: descriptorOffset,
+      size: descriptorData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
+    ...List.filled(paddingBeforeData, 0),
+    ...typeEntries,
+    ...descriptorData,
   ];
 }
 
