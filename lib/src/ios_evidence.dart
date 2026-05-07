@@ -201,6 +201,12 @@ class IosEvidenceExtractor {
         }
       }
 
+      for (final protocol in machoReport.swiftProtocols) {
+        for (final token in _matchedTokens(protocol.name, tokens)) {
+          addEvidence(token, '${entity.path}#${protocol.sourceSection}');
+        }
+      }
+
       for (final conformance in machoReport.swiftProtocolConformances) {
         for (final token in _matchedTokens(conformance.typeName, tokens)) {
           addEvidence(token, '${entity.path}#${conformance.sourceSection}');

@@ -82,6 +82,10 @@ let _ = CameraPurpose(label: "camera")
         ),
         contains('PermissionProtocol'),
       );
+      expect(
+        report.swiftProtocols.map((protocol) => protocol.name),
+        contains('PermissionProtocol'),
+      );
     },
     timeout: const Timeout(Duration(minutes: 3)),
   );

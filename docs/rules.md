@@ -154,6 +154,7 @@ C-string values are parsed from `__cstring`, `__objc_methname`,
 parsed from `__swift5_reflstr` and `__swift5_typeref` sections. Swift nominal
 type names are resolved from `__swift5_types` relative context descriptors when
 the descriptor and name target sections are present in the artifact. Swift
+protocol names are resolved from `__swift5_protos` protocol descriptors. Swift
 protocol conformance descriptors are resolved from `__swift5_proto` to recover
 the conforming type name and protocol name when both target descriptors are
 present.

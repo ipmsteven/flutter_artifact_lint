@@ -572,6 +572,24 @@ void main() {
       );
     });
 
+    test('resolves Swift protocol descriptors from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithSwiftProtocolDescriptors([
+          'PermissionProtocol',
+          'CameraPurposeProviding',
+        ]),
+      );
+
+      expect(
+        report.swiftProtocols.map((protocol) => protocol.name),
+        containsAll(['PermissionProtocol', 'CameraPurposeProviding']),
+      );
+      expect(
+        report.swiftProtocols.map((protocol) => protocol.sourceSection),
+        everyElement('__TEXT.__swift5_protos'),
+      );
+    });
+
     test('reads C strings from the file-backed parser', () async {
       final root = await Directory.systemTemp.createTemp('fal_macho_');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -1246,6 +1264,59 @@ List<int> thinMachOWithSwiftProtocolConformances(
       segmentName: '__TEXT',
       address: protoAddress,
       fileOffset: protoOffset,
+      size: protoEntries.length,
+    ),
+    (
+      name: '__const',
+      segmentName: '__TEXT',
+      address: descriptorAddress,
+      fileOffset: descriptorOffset,
+      size: descriptorData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
+    ...List.filled(paddingBeforeData, 0),
+    ...protoEntries,
+    ...descriptorData,
+  ];
+}
+
+List<int> thinMachOWithSwiftProtocolDescriptors(
+  List<String> protocolNames, {
+  int paddingBeforeData = 0,
+}) {
+  final protosAddress = 0x100000100;
+  final descriptorAddress = 0x100001000;
+  final descriptorData = <int>[];
+  final protoEntries = <int>[];
+
+  for (var i = 0; i < protocolNames.length; i += 1) {
+    final entryAddress = protosAddress + i * 4;
+    final currentDescriptorAddress = descriptorAddress + descriptorData.length;
+    final nameAddress = currentDescriptorAddress + 16;
+    protoEntries.addAll(u32(currentDescriptorAddress - entryAddress));
+    descriptorData.addAll([
+      ...u32(0), // flags
+      ...u32(0), // parent
+      ...u32(nameAddress - (currentDescriptorAddress + 8)),
+      ...u32(0), // requirements signature
+      ...latin1.encode(protocolNames[i]),
+      0,
+    ]);
+  }
+
+  final commandSize = 72 + 2 * 80;
+  final protosOffset = 32 + commandSize + paddingBeforeData;
+  final descriptorOffset = protosOffset + protoEntries.length;
+  final command = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__swift5_protos',
+      segmentName: '__TEXT',
+      address: protosAddress,
+      fileOffset: protosOffset,
       size: protoEntries.length,
     ),
     (

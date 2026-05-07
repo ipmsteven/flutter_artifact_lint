@@ -16,6 +16,7 @@ class MachOReport {
     this.symbols = const [],
     this.sectionStrings = const [],
     this.swiftTypes = const [],
+    this.swiftProtocols = const [],
     this.swiftProtocolConformances = const [],
     this.dynamicSymbolTables = const [],
     this.dyldInfos = const [],
@@ -42,6 +43,7 @@ class MachOReport {
   final List<MachOSymbol> symbols;
   final List<MachOSectionString> sectionStrings;
   final List<MachOSwiftType> swiftTypes;
+  final List<MachOSwiftProtocol> swiftProtocols;
   final List<MachOSwiftProtocolConformance> swiftProtocolConformances;
   final List<MachODynamicSymbolTable> dynamicSymbolTables;
   final List<MachODyldInfo> dyldInfos;
@@ -174,6 +176,18 @@ class MachOSectionString {
 
 class MachOSwiftType {
   const MachOSwiftType({
+    required this.name,
+    required this.sourceSection,
+    required this.descriptorAddress,
+  });
+
+  final String name;
+  final String sourceSection;
+  final int descriptorAddress;
+}
+
+class MachOSwiftProtocol {
+  const MachOSwiftProtocol({
     required this.name,
     required this.sourceSection,
     required this.descriptorAddress,
@@ -388,6 +402,7 @@ class MachOParser {
       thinReport.symbols,
       thinReport.sectionStrings,
       thinReport.swiftTypes,
+      thinReport.swiftProtocols,
       thinReport.swiftProtocolConformances,
       thinReport.dynamicSymbolTables,
       thinReport.dyldInfos,
@@ -442,6 +457,7 @@ class MachOParser {
     final symbols = <MachOSymbol>[];
     final sectionStrings = <MachOSectionString>[];
     final swiftTypes = <MachOSwiftType>[];
+    final swiftProtocols = <MachOSwiftProtocol>[];
     final swiftProtocolConformances = <MachOSwiftProtocolConformance>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final dyldInfos = <MachODyldInfo>[];
@@ -485,6 +501,7 @@ class MachOParser {
       symbols.addAll(sliceReport.symbols);
       sectionStrings.addAll(sliceReport.sectionStrings);
       swiftTypes.addAll(sliceReport.swiftTypes);
+      swiftProtocols.addAll(sliceReport.swiftProtocols);
       swiftProtocolConformances.addAll(sliceReport.swiftProtocolConformances);
       dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
       dyldInfos.addAll(sliceReport.dyldInfos);
@@ -512,6 +529,7 @@ class MachOParser {
       symbols,
       sectionStrings,
       swiftTypes,
+      swiftProtocols,
       swiftProtocolConformances,
       dynamicSymbolTables,
       dyldInfos,
@@ -604,6 +622,12 @@ class MachOParser {
       availableLength,
       segments: report.segments,
     );
+    final swiftProtocols = _readSwiftProtocolsFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      segments: report.segments,
+    );
     final swiftProtocolConformances = _readSwiftProtocolConformancesFromFile(
       raf,
       fileOffset,
@@ -644,6 +668,7 @@ class MachOParser {
         dyldExportSymbols.isEmpty &&
         sectionStrings.isEmpty &&
         swiftTypes.isEmpty &&
+        swiftProtocols.isEmpty &&
         swiftProtocolConformances.isEmpty &&
         objcSelectors.isEmpty &&
         objcClasses.isEmpty &&
@@ -666,6 +691,7 @@ class MachOParser {
       [...report.symbols, ...symbols],
       [...report.sectionStrings, ...sectionStrings],
       [...report.swiftTypes, ...swiftTypes],
+      [...report.swiftProtocols, ...swiftProtocols],
       [...report.swiftProtocolConformances, ...swiftProtocolConformances],
       report.dynamicSymbolTables,
       report.dyldInfos,
@@ -713,6 +739,7 @@ class MachOParser {
     final symbols = <MachOSymbol>[];
     final sectionStrings = <MachOSectionString>[];
     final swiftTypes = <MachOSwiftType>[];
+    final swiftProtocols = <MachOSwiftProtocol>[];
     final swiftProtocolConformances = <MachOSwiftProtocolConformance>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final dyldInfos = <MachODyldInfo>[];
@@ -753,6 +780,7 @@ class MachOParser {
         symbols.addAll(sliceReport.symbols);
         sectionStrings.addAll(sliceReport.sectionStrings);
         swiftTypes.addAll(sliceReport.swiftTypes);
+        swiftProtocols.addAll(sliceReport.swiftProtocols);
         swiftProtocolConformances.addAll(sliceReport.swiftProtocolConformances);
         dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
         dyldInfos.addAll(sliceReport.dyldInfos);
@@ -783,6 +811,7 @@ class MachOParser {
       symbols,
       sectionStrings,
       swiftTypes,
+      swiftProtocols,
       swiftProtocolConformances,
       dynamicSymbolTables,
       dyldInfos,
@@ -1010,6 +1039,10 @@ class MachOParser {
       segments: segments,
     );
     final swiftTypes = _readSwiftTypesFromBytes(bytes, segments: segments);
+    final swiftProtocols = _readSwiftProtocolsFromBytes(
+      bytes,
+      segments: segments,
+    );
     final swiftProtocolConformances = _readSwiftProtocolConformancesFromBytes(
       bytes,
       segments: segments,
@@ -1049,6 +1082,7 @@ class MachOParser {
       symbols: symbols,
       sectionStrings: sectionStrings,
       swiftTypes: swiftTypes,
+      swiftProtocols: swiftProtocols,
       swiftProtocolConformances: swiftProtocolConformances,
       dynamicSymbolTables: dynamicSymbolTables,
       dyldInfos: dyldInfos,
@@ -1078,6 +1112,7 @@ MachOReport _deduplicatedReport(
   List<MachOSymbol> symbols = const [],
   List<MachOSectionString> sectionStrings = const [],
   List<MachOSwiftType> swiftTypes = const [],
+  List<MachOSwiftProtocol> swiftProtocols = const [],
   List<MachOSwiftProtocolConformance> swiftProtocolConformances = const [],
   List<MachODynamicSymbolTable> dynamicSymbolTables = const [],
   List<MachODyldInfo> dyldInfos = const [],
@@ -1171,6 +1206,12 @@ MachOReport _deduplicatedReport(
         swiftType;
   }
 
+  final bySwiftProtocol = <String, MachOSwiftProtocol>{};
+  for (final protocol in swiftProtocols) {
+    bySwiftProtocol['${protocol.sourceSection}|${protocol.name}|${protocol.descriptorAddress}'] =
+        protocol;
+  }
+
   final bySwiftProtocolConformance = <String, MachOSwiftProtocolConformance>{};
   for (final conformance in swiftProtocolConformances) {
     bySwiftProtocolConformance['${conformance.sourceSection}|${conformance.typeName}|${conformance.protocolName}|${conformance.descriptorAddress}'] =
@@ -1254,6 +1295,7 @@ MachOReport _deduplicatedReport(
     symbols: bySymbol.values.toList(),
     sectionStrings: bySectionString.values.toList(),
     swiftTypes: bySwiftType.values.toList(),
+    swiftProtocols: bySwiftProtocol.values.toList(),
     swiftProtocolConformances: bySwiftProtocolConformance.values.toList(),
     dynamicSymbolTables: byDynamicSymbolTable.values.toList(),
     dyldInfos: byDyldInfo.values.toList(),
@@ -1530,6 +1572,50 @@ List<MachOSwiftType> _readSwiftTypesFromFile(
   }
 
   return swiftTypes;
+}
+
+List<MachOSwiftProtocol> _readSwiftProtocolsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required List<MachOSegment> segments,
+}) {
+  final protocols = <MachOSwiftProtocol>[];
+  final allSections = _allSections(segments).toList();
+
+  for (final section in _sectionsNamed(segments, '__swift5_protos')) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    final sectionBytes = _readRange(
+      raf,
+      fileOffset + section.fileOffset,
+      section.size,
+    );
+    for (var offset = 0; offset + 4 <= sectionBytes.length; offset += 4) {
+      final entryAddress = section.address + offset;
+      final descriptorAddress = entryAddress + _readI32(sectionBytes, offset);
+      if (descriptorAddress <= 0) continue;
+
+      final name = _readSwiftProtocolNameFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        descriptorAddress,
+      );
+      if (name == null) continue;
+
+      protocols.add(
+        MachOSwiftProtocol(
+          name: name,
+          sourceSection: section.displayName,
+          descriptorAddress: descriptorAddress,
+        ),
+      );
+    }
+  }
+
+  return protocols;
 }
 
 List<MachOSwiftProtocolConformance> _readSwiftProtocolConformancesFromFile(
@@ -1983,6 +2069,45 @@ List<MachOSwiftType> _readSwiftTypesFromBytes(
   }
 
   return swiftTypes;
+}
+
+List<MachOSwiftProtocol> _readSwiftProtocolsFromBytes(
+  List<int> bytes, {
+  required List<MachOSegment> segments,
+}) {
+  final protocols = <MachOSwiftProtocol>[];
+  final allSections = _allSections(segments).toList();
+
+  for (final section in _sectionsNamed(segments, '__swift5_protos')) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    final sectionBytes = bytes.sublist(
+      section.fileOffset,
+      section.fileOffset + section.size,
+    );
+    for (var offset = 0; offset + 4 <= sectionBytes.length; offset += 4) {
+      final entryAddress = section.address + offset;
+      final descriptorAddress = entryAddress + _readI32(sectionBytes, offset);
+      if (descriptorAddress <= 0) continue;
+
+      final name = _readSwiftProtocolNameFromBytes(
+        bytes,
+        allSections,
+        descriptorAddress,
+      );
+      if (name == null) continue;
+
+      protocols.add(
+        MachOSwiftProtocol(
+          name: name,
+          sourceSection: section.displayName,
+          descriptorAddress: descriptorAddress,
+        ),
+      );
+    }
+  }
+
+  return protocols;
 }
 
 List<MachOSwiftProtocolConformance> _readSwiftProtocolConformancesFromBytes(
@@ -3314,6 +3439,34 @@ String? _readSwiftTypeNameFromFile(
 }
 
 String? _readSwiftTypeNameFromBytes(
+  List<int> bytes,
+  List<MachOSection> allSections,
+  int descriptorAddress,
+) {
+  return _readSwiftContextDescriptorNameFromBytes(
+    bytes,
+    allSections,
+    descriptorAddress,
+  );
+}
+
+String? _readSwiftProtocolNameFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength,
+  List<MachOSection> allSections,
+  int descriptorAddress,
+) {
+  return _readSwiftContextDescriptorNameFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    descriptorAddress,
+  );
+}
+
+String? _readSwiftProtocolNameFromBytes(
   List<int> bytes,
   List<MachOSection> allSections,
   int descriptorAddress,
