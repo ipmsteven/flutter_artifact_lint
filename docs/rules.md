@@ -145,6 +145,7 @@ bind, weak-bind, and lazy-bind opcode streams.
 Imported symbol names are also parsed from uncompressed
 `LC_DYLD_CHAINED_FIXUPS` import tables for `DYLD_CHAINED_IMPORT`,
 `DYLD_CHAINED_IMPORT_ADDEND`, and `DYLD_CHAINED_IMPORT_ADDEND64` formats.
+Exported symbol names are parsed from `LC_DYLD_EXPORTS_TRIE`.
 C-string values are parsed from `__cstring`, `__objc_methname`,
 `__objc_classname`, and `__objc_methtype` sections.
 Objective-C selector references are resolved from `__objc_selrefs` pointers

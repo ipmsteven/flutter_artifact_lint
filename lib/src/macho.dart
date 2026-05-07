@@ -18,7 +18,9 @@ class MachOReport {
     this.dynamicSymbolTables = const [],
     this.dyldInfos = const [],
     this.chainedFixups = const [],
+    this.dyldExportsTries = const [],
     this.dyldBindSymbols = const [],
+    this.dyldExportSymbols = const [],
     this.objcSelectors = const [],
     this.objcClasses = const [],
     this.objcMethods = const [],
@@ -39,7 +41,9 @@ class MachOReport {
   final List<MachODynamicSymbolTable> dynamicSymbolTables;
   final List<MachODyldInfo> dyldInfos;
   final List<MachOChainedFixups> chainedFixups;
+  final List<MachODyldExportsTrie> dyldExportsTries;
   final List<MachODyldBindSymbol> dyldBindSymbols;
+  final List<MachODyldExportSymbol> dyldExportSymbols;
   final List<MachOObjCSelector> objcSelectors;
   final List<MachOObjCClass> objcClasses;
   final List<MachOObjCMethod> objcMethods;
@@ -261,8 +265,25 @@ class MachOChainedFixups {
   final int dataSize;
 }
 
+class MachODyldExportsTrie {
+  const MachODyldExportsTrie({
+    required this.dataOffset,
+    required this.dataSize,
+  });
+
+  final int dataOffset;
+  final int dataSize;
+}
+
 class MachODyldBindSymbol {
   const MachODyldBindSymbol({required this.name, required this.source});
+
+  final String name;
+  final String source;
+}
+
+class MachODyldExportSymbol {
+  const MachODyldExportSymbol({required this.name, required this.source});
 
   final String name;
   final String source;
@@ -321,7 +342,9 @@ class MachOParser {
       thinReport.dynamicSymbolTables,
       thinReport.dyldInfos,
       thinReport.chainedFixups,
+      thinReport.dyldExportsTries,
       thinReport.dyldBindSymbols,
+      thinReport.dyldExportSymbols,
       thinReport.objcSelectors,
       thinReport.objcClasses,
       thinReport.objcMethods,
@@ -370,7 +393,9 @@ class MachOParser {
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final dyldInfos = <MachODyldInfo>[];
     final chainedFixups = <MachOChainedFixups>[];
+    final dyldExportsTries = <MachODyldExportsTrie>[];
     final dyldBindSymbols = <MachODyldBindSymbol>[];
+    final dyldExportSymbols = <MachODyldExportSymbol>[];
     final objcSelectors = <MachOObjCSelector>[];
     final objcClasses = <MachOObjCClass>[];
     final objcMethods = <MachOObjCMethod>[];
@@ -408,7 +433,9 @@ class MachOParser {
       dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
       dyldInfos.addAll(sliceReport.dyldInfos);
       chainedFixups.addAll(sliceReport.chainedFixups);
+      dyldExportsTries.addAll(sliceReport.dyldExportsTries);
       dyldBindSymbols.addAll(sliceReport.dyldBindSymbols);
+      dyldExportSymbols.addAll(sliceReport.dyldExportSymbols);
       objcSelectors.addAll(sliceReport.objcSelectors);
       objcClasses.addAll(sliceReport.objcClasses);
       objcMethods.addAll(sliceReport.objcMethods);
@@ -430,7 +457,9 @@ class MachOParser {
       dynamicSymbolTables,
       dyldInfos,
       chainedFixups,
+      dyldExportsTries,
       dyldBindSymbols,
+      dyldExportSymbols,
       objcSelectors,
       objcClasses,
       objcMethods,
@@ -496,6 +525,12 @@ class MachOParser {
       availableLength,
       chainedFixups: report.chainedFixups,
     );
+    final dyldExportSymbols = _readDyldExportSymbolsFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      exportsTries: report.dyldExportsTries,
+    );
     final sectionStrings = _readSectionStringsFromFile(
       raf,
       fileOffset,
@@ -526,6 +561,7 @@ class MachOParser {
     if (symbols.isEmpty &&
         dyldBindSymbols.isEmpty &&
         chainedFixupBindSymbols.isEmpty &&
+        dyldExportSymbols.isEmpty &&
         sectionStrings.isEmpty &&
         objcSelectors.isEmpty &&
         objcClasses.isEmpty &&
@@ -549,11 +585,13 @@ class MachOParser {
       report.dynamicSymbolTables,
       report.dyldInfos,
       report.chainedFixups,
+      report.dyldExportsTries,
       [
         ...report.dyldBindSymbols,
         ...dyldBindSymbols,
         ...chainedFixupBindSymbols,
       ],
+      [...report.dyldExportSymbols, ...dyldExportSymbols],
       [...report.objcSelectors, ...objcSelectors],
       [...report.objcClasses, ...objcClasses],
       [...report.objcMethods, ...objcMethods],
@@ -591,7 +629,9 @@ class MachOParser {
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final dyldInfos = <MachODyldInfo>[];
     final chainedFixups = <MachOChainedFixups>[];
+    final dyldExportsTries = <MachODyldExportsTrie>[];
     final dyldBindSymbols = <MachODyldBindSymbol>[];
+    final dyldExportSymbols = <MachODyldExportSymbol>[];
     final objcSelectors = <MachOObjCSelector>[];
     final objcClasses = <MachOObjCClass>[];
     final objcMethods = <MachOObjCMethod>[];
@@ -626,7 +666,9 @@ class MachOParser {
         dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
         dyldInfos.addAll(sliceReport.dyldInfos);
         chainedFixups.addAll(sliceReport.chainedFixups);
+        dyldExportsTries.addAll(sliceReport.dyldExportsTries);
         dyldBindSymbols.addAll(sliceReport.dyldBindSymbols);
+        dyldExportSymbols.addAll(sliceReport.dyldExportSymbols);
         objcSelectors.addAll(sliceReport.objcSelectors);
         objcClasses.addAll(sliceReport.objcClasses);
         objcMethods.addAll(sliceReport.objcMethods);
@@ -651,7 +693,9 @@ class MachOParser {
       dynamicSymbolTables,
       dyldInfos,
       chainedFixups,
+      dyldExportsTries,
       dyldBindSymbols,
+      dyldExportSymbols,
       objcSelectors,
       objcClasses,
       objcMethods,
@@ -679,6 +723,7 @@ class MachOParser {
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final dyldInfos = <MachODyldInfo>[];
     final chainedFixups = <MachOChainedFixups>[];
+    final dyldExportsTries = <MachODyldExportsTrie>[];
     var offset = header.loadCommandsOffset;
 
     for (var i = 0; i < header.commandCount; i += 1) {
@@ -791,6 +836,15 @@ class MachOParser {
         );
       }
 
+      if (command == _lcDyldExportsTrie && commandSize >= 16) {
+        dyldExportsTries.add(
+          MachODyldExportsTrie(
+            dataOffset: _readU32(bytes, offset + 8),
+            dataSize: _readU32(bytes, offset + 12),
+          ),
+        );
+      }
+
       if (command == _lcUuid && commandSize >= 24) {
         uuids.add(MachOUuid(value: _uuidString(bytes, offset + 8)));
       }
@@ -849,6 +903,10 @@ class MachOParser {
       bytes,
       chainedFixups: chainedFixups,
     );
+    final dyldExportSymbols = _readDyldExportSymbolsFromBytes(
+      bytes,
+      exportsTries: dyldExportsTries,
+    );
     final sectionStrings = _readSectionStringsFromBytes(
       bytes,
       segments: segments,
@@ -885,7 +943,9 @@ class MachOParser {
       dynamicSymbolTables: dynamicSymbolTables,
       dyldInfos: dyldInfos,
       chainedFixups: chainedFixups,
+      dyldExportsTries: dyldExportsTries,
       dyldBindSymbols: [...dyldBindSymbols, ...chainedFixupBindSymbols],
+      dyldExportSymbols: dyldExportSymbols,
       objcSelectors: objcSelectors,
       objcClasses: objcClasses,
       objcMethods: objcMethods,
@@ -909,7 +969,9 @@ MachOReport _deduplicatedReport(
   List<MachODynamicSymbolTable> dynamicSymbolTables = const [],
   List<MachODyldInfo> dyldInfos = const [],
   List<MachOChainedFixups> chainedFixups = const [],
+  List<MachODyldExportsTrie> dyldExportsTries = const [],
   List<MachODyldBindSymbol> dyldBindSymbols = const [],
+  List<MachODyldExportSymbol> dyldExportSymbols = const [],
   List<MachOObjCSelector> objcSelectors = const [],
   List<MachOObjCClass> objcClasses = const [],
   List<MachOObjCMethod> objcMethods = const [],
@@ -1007,10 +1069,22 @@ MachOReport _deduplicatedReport(
         chainedFixup;
   }
 
+  final byDyldExportsTrie = <String, MachODyldExportsTrie>{};
+  for (final exportsTrie in dyldExportsTries) {
+    byDyldExportsTrie['${exportsTrie.dataOffset}|${exportsTrie.dataSize}'] =
+        exportsTrie;
+  }
+
   final byDyldBindSymbol = <String, MachODyldBindSymbol>{};
   for (final dyldBindSymbol in dyldBindSymbols) {
     byDyldBindSymbol['${dyldBindSymbol.source}|${dyldBindSymbol.name}'] =
         dyldBindSymbol;
+  }
+
+  final byDyldExportSymbol = <String, MachODyldExportSymbol>{};
+  for (final dyldExportSymbol in dyldExportSymbols) {
+    byDyldExportSymbol['${dyldExportSymbol.source}|${dyldExportSymbol.name}'] =
+        dyldExportSymbol;
   }
 
   final byObjCSelector = <String, MachOObjCSelector>{};
@@ -1050,7 +1124,9 @@ MachOReport _deduplicatedReport(
     dynamicSymbolTables: byDynamicSymbolTable.values.toList(),
     dyldInfos: byDyldInfo.values.toList(),
     chainedFixups: byChainedFixups.values.toList(),
+    dyldExportsTries: byDyldExportsTrie.values.toList(),
     dyldBindSymbols: byDyldBindSymbol.values.toList(),
+    dyldExportSymbols: byDyldExportSymbol.values.toList(),
     objcSelectors: byObjCSelector.values.toList(),
     objcClasses: byObjCClass.values.toList(),
     objcMethods: byObjCMethod.values.toList(),
@@ -1073,6 +1149,13 @@ class _MachOHeader {
   final int commandCount;
   final int loadCommandsOffset;
   final int loadCommandsEnd;
+}
+
+class _Uleb128Result {
+  const _Uleb128Result({required this.value, required this.nextOffset});
+
+  final int value;
+  final int nextOffset;
 }
 
 class _ObjCClassMetadata {
@@ -2841,6 +2924,61 @@ List<MachODyldBindSymbol> _readChainedFixupBindSymbolsFromBytes(
   return symbols;
 }
 
+List<MachODyldExportSymbol> _readDyldExportSymbolsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required List<MachODyldExportsTrie> exportsTries,
+}) {
+  final symbols = <MachODyldExportSymbol>[];
+  for (final exportsTrie in exportsTries) {
+    if (!_canReadDyldInfoStream(
+      exportsTrie.dataOffset,
+      exportsTrie.dataSize,
+      availableLength,
+    )) {
+      continue;
+    }
+
+    symbols.addAll(
+      _parseDyldExportTrieSymbols(
+        _readRange(
+          raf,
+          fileOffset + exportsTrie.dataOffset,
+          exportsTrie.dataSize,
+        ),
+      ),
+    );
+  }
+  return symbols;
+}
+
+List<MachODyldExportSymbol> _readDyldExportSymbolsFromBytes(
+  List<int> bytes, {
+  required List<MachODyldExportsTrie> exportsTries,
+}) {
+  final symbols = <MachODyldExportSymbol>[];
+  for (final exportsTrie in exportsTries) {
+    if (!_canReadDyldInfoStream(
+      exportsTrie.dataOffset,
+      exportsTrie.dataSize,
+      bytes.length,
+    )) {
+      continue;
+    }
+
+    symbols.addAll(
+      _parseDyldExportTrieSymbols(
+        bytes.sublist(
+          exportsTrie.dataOffset,
+          exportsTrie.dataOffset + exportsTrie.dataSize,
+        ),
+      ),
+    );
+  }
+  return symbols;
+}
+
 List<MachODyldBindSymbol> _readDyldBindSymbolStreamFromFile(
   RandomAccessFile raf,
   int fileOffset,
@@ -2978,6 +3116,67 @@ List<MachODyldBindSymbol> _parseChainedFixupBindSymbols(List<int> bytes) {
     symbols.add(
       MachODyldBindSymbol(name: name, source: 'LC_DYLD_CHAINED_FIXUPS.imports'),
     );
+  }
+
+  return symbols;
+}
+
+List<MachODyldExportSymbol> _parseDyldExportTrieSymbols(List<int> bytes) {
+  final symbols = <MachODyldExportSymbol>[];
+  final stack = <({int offset, String prefix})>[(offset: 0, prefix: '')];
+  final visited = <int>{};
+
+  while (stack.isNotEmpty && visited.length < _maxDyldExportTrieNodes) {
+    final node = stack.removeLast();
+    if (!_rangeWithin(node.offset, 1, bytes.length) ||
+        !visited.add(node.offset)) {
+      continue;
+    }
+
+    var cursor = node.offset;
+    final terminalSizeResult = _readUleb128(bytes, cursor);
+    if (terminalSizeResult == null) continue;
+    final terminalSize = terminalSizeResult.value;
+    cursor = terminalSizeResult.nextOffset;
+
+    if (terminalSize > 0) {
+      if (!_rangeWithin(cursor, terminalSize, bytes.length)) continue;
+      if (node.prefix.isNotEmpty) {
+        symbols.add(
+          MachODyldExportSymbol(
+            name: node.prefix,
+            source: 'LC_DYLD_EXPORTS_TRIE',
+          ),
+        );
+      }
+      cursor += terminalSize;
+    }
+
+    if (!_rangeWithin(cursor, 1, bytes.length)) continue;
+    final childCount = bytes[cursor];
+    cursor += 1;
+
+    for (var i = 0; i < childCount; i += 1) {
+      final edgeStart = cursor;
+      while (cursor < bytes.length && bytes[cursor] != 0) {
+        cursor += 1;
+      }
+      if (cursor >= bytes.length) break;
+
+      final edge = latin1.decode(
+        bytes.sublist(edgeStart, cursor),
+        allowInvalid: true,
+      );
+      cursor += 1;
+
+      final childOffsetResult = _readUleb128(bytes, cursor);
+      if (childOffsetResult == null) break;
+      cursor = childOffsetResult.nextOffset;
+
+      final childOffset = childOffsetResult.value;
+      if (childOffset <= 0 || childOffset >= bytes.length) continue;
+      stack.add((offset: childOffset, prefix: '${node.prefix}$edge'));
+    }
   }
 
   return symbols;
@@ -3165,6 +3364,22 @@ int _signExtend(int value, int width) {
   return (truncated & signBit) == 0 ? truncated : truncated - (1 << width);
 }
 
+_Uleb128Result? _readUleb128(List<int> bytes, int offset) {
+  var result = 0;
+  var shift = 0;
+  var cursor = offset;
+  while (cursor < bytes.length && shift < 64) {
+    final byte = bytes[cursor];
+    cursor += 1;
+    result |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) == 0) {
+      return _Uleb128Result(value: result, nextOffset: cursor);
+    }
+    shift += 7;
+  }
+  return null;
+}
+
 int _skipUleb128(List<int> bytes, int offset) {
   while (offset < bytes.length) {
     final byte = bytes[offset];
@@ -3254,6 +3469,7 @@ const _bindOpcodeDoBindUlebTimesSkippingUleb = 0xc0;
 const _dyldChainedImport = 1;
 const _dyldChainedImportAddend = 2;
 const _dyldChainedImportAddend64 = 3;
+const _maxDyldExportTrieNodes = 8192;
 const _maxDyldImportCount = 1 << 20;
 const _maxFatArchTableBytes = 64 * 1024;
 const _maxDyldInfoBytes = 16 * 1024 * 1024;
@@ -3285,6 +3501,7 @@ const _lcDyldInfoOnly = 0x80000022;
 const _lcLoadUpwardDylib = 0x80000023;
 const _lcSourceVersion = 0x2a;
 const _lcBuildVersion = 0x32;
+const _lcDyldExportsTrie = 0x80000033;
 const _lcDyldChainedFixups = 0x80000034;
 const _lcVersionMinMacosx = 0x24;
 const _lcVersionMinIphoneos = 0x25;

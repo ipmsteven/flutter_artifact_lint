@@ -390,6 +390,42 @@ void main() {
       },
     );
 
+    test('reads LC_DYLD_EXPORTS_TRIE symbols from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithDyldExportsTrie([
+          r'_OBJC_CLASS_$_RunnerViewController',
+          '_UIApplicationOpenSettingsURLString',
+        ]),
+      );
+
+      expect(
+        report.dyldExportSymbols.map((symbol) => symbol.name),
+        containsAll([
+          r'_OBJC_CLASS_$_RunnerViewController',
+          '_UIApplicationOpenSettingsURLString',
+        ]),
+      );
+    });
+
+    test(
+      'reads LC_DYLD_EXPORTS_TRIE symbols from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithDyldExportsTrie([
+              '_FlutterAppDelegate',
+            ], paddingBeforeExportsTrie: 4096),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(report.dyldExportSymbols.single.name, '_FlutterAppDelegate');
+      },
+    );
+
     test('reads C strings from Objective-C method sections', () {
       final report = const MachOParser().parse(
         thinMachOWithCStringSection(
@@ -818,6 +854,26 @@ List<int> thinMachOWithChainedFixupImports(
     ...command,
     ...List.filled(paddingBeforeChainedFixups, 0),
     ...chainedFixups,
+  ];
+}
+
+List<int> thinMachOWithDyldExportsTrie(
+  List<String> symbols, {
+  int paddingBeforeExportsTrie = 0,
+}) {
+  final exportsTrie = dyldExportsTrieBytes(symbols);
+  const commandsSize = 16;
+  final dataOffset = 32 + commandsSize + paddingBeforeExportsTrie;
+  final command = machoExportsTrieCommand(
+    dataOffset: dataOffset,
+    dataSize: exportsTrie.length,
+  );
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
+    ...List.filled(paddingBeforeExportsTrie, 0),
+    ...exportsTrie,
   ];
 }
 
@@ -1427,10 +1483,50 @@ List<int> machoChainedFixupsCommand({
   return [...u32(0x80000034), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
 }
 
+List<int> machoExportsTrieCommand({
+  required int dataOffset,
+  required int dataSize,
+}) {
+  return [...u32(0x80000033), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
+}
+
 List<int> dyldBindInfoBytes(List<String> symbols) {
   return [
     for (final symbol in symbols) ...[0x40, ...latin1.encode(symbol), 0, 0x90],
     0,
+  ];
+}
+
+List<int> dyldExportsTrieBytes(List<String> symbols) {
+  final childNodes = [
+    for (var i = 0; i < symbols.length; i += 1) ...[
+      ...uleb128(2),
+      ...uleb128(0),
+      ...uleb128(0x1000),
+      0,
+    ],
+  ];
+  final rootPrefix = [...uleb128(0), symbols.length];
+  final rootEdgesWithoutOffsets = [
+    for (final symbol in symbols) ...[...latin1.encode(symbol), 0],
+  ];
+  final rootOffsets = <List<int>>[];
+  var currentChildOffset =
+      rootPrefix.length + rootEdgesWithoutOffsets.length + symbols.length;
+  for (var i = 0; i < symbols.length; i += 1) {
+    rootOffsets.add(uleb128(currentChildOffset));
+    currentChildOffset +=
+        uleb128(2).length + uleb128(0).length + uleb128(0x1000).length + 1;
+  }
+
+  return [
+    ...rootPrefix,
+    for (var i = 0; i < symbols.length; i += 1) ...[
+      ...latin1.encode(symbols[i]),
+      0,
+      ...rootOffsets[i],
+    ],
+    ...childNodes,
   ];
 }
 
@@ -1835,6 +1931,18 @@ List<int> u32be(int value) {
     (value >> 8) & 0xff,
     value & 0xff,
   ];
+}
+
+List<int> uleb128(int value) {
+  final result = <int>[];
+  var remaining = value;
+  do {
+    var byte = remaining & 0x7f;
+    remaining >>= 7;
+    if (remaining != 0) byte |= 0x80;
+    result.add(byte);
+  } while (remaining != 0);
+  return result;
 }
 
 List<int> u64(int value) {

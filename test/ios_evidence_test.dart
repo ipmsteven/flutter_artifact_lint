@@ -149,6 +149,28 @@ void main() {
     },
   );
 
+  test('reports parsed exports trie sources for token evidence', () async {
+    final root = await Directory.systemTemp.createTemp('fal_evidence_');
+    addTearDown(() => root.deleteSync(recursive: true));
+
+    final appPath = '${root.path}/Runner.app';
+    final binary = File('$appPath/Runner')..createSync(recursive: true);
+    binary.writeAsBytesSync(
+      thinMachOWithDyldExportsTrie(['_UIApplicationOpenSettingsURLString']),
+    );
+
+    final report = const IosEvidenceExtractor(
+      tokens: ['_UIApplicationOpenSettingsURLString'],
+    ).collect(appPath);
+
+    expect(
+      report.sourcesFor([
+        '_UIApplicationOpenSettingsURLString',
+      ])['_UIApplicationOpenSettingsURLString'],
+      contains('${binary.path}#LC_DYLD_EXPORTS_TRIE'),
+    );
+  });
+
   test(
     'reports parsed Objective-C selector reference sources for token evidence',
     () async {
@@ -363,6 +385,29 @@ List<int> thinMachOWithChainedFixupImports(List<String> symbols) {
     ...u32(0),
     ...command,
     ...chainedFixups,
+  ];
+}
+
+List<int> thinMachOWithDyldExportsTrie(List<String> symbols) {
+  final exportsTrie = dyldExportsTrieBytes(symbols);
+  const commandsSize = 16;
+  final dataOffset = 32 + commandsSize;
+  final command = machoExportsTrieCommand(
+    dataOffset: dataOffset,
+    dataSize: exportsTrie.length,
+  );
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(1),
+    ...u32(command.length),
+    ...u32(0),
+    ...u32(0),
+    ...command,
+    ...exportsTrie,
   ];
 }
 
@@ -671,10 +716,50 @@ List<int> machoChainedFixupsCommand({
   return [...u32(0x80000034), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
 }
 
+List<int> machoExportsTrieCommand({
+  required int dataOffset,
+  required int dataSize,
+}) {
+  return [...u32(0x80000033), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
+}
+
 List<int> dyldBindInfoBytes(List<String> symbols) {
   return [
     for (final symbol in symbols) ...[0x40, ...latin1.encode(symbol), 0, 0x90],
     0,
+  ];
+}
+
+List<int> dyldExportsTrieBytes(List<String> symbols) {
+  final childNodes = [
+    for (var i = 0; i < symbols.length; i += 1) ...[
+      ...uleb128(2),
+      ...uleb128(0),
+      ...uleb128(0x1000),
+      0,
+    ],
+  ];
+  final rootPrefix = [...uleb128(0), symbols.length];
+  final rootEdgesWithoutOffsets = [
+    for (final symbol in symbols) ...[...latin1.encode(symbol), 0],
+  ];
+  final rootOffsets = <List<int>>[];
+  var currentChildOffset =
+      rootPrefix.length + rootEdgesWithoutOffsets.length + symbols.length;
+  for (var i = 0; i < symbols.length; i += 1) {
+    rootOffsets.add(uleb128(currentChildOffset));
+    currentChildOffset +=
+        uleb128(2).length + uleb128(0).length + uleb128(0x1000).length + 1;
+  }
+
+  return [
+    ...rootPrefix,
+    for (var i = 0; i < symbols.length; i += 1) ...[
+      ...latin1.encode(symbols[i]),
+      0,
+      ...rootOffsets[i],
+    ],
+    ...childNodes,
   ];
 }
 
@@ -795,6 +880,18 @@ List<int> u32be(int value) {
     (value >> 8) & 0xff,
     value & 0xff,
   ];
+}
+
+List<int> uleb128(int value) {
+  final result = <int>[];
+  var remaining = value;
+  do {
+    var byte = remaining & 0x7f;
+    remaining >>= 7;
+    if (remaining != 0) byte |= 0x80;
+    result.add(byte);
+  } while (remaining != 0);
+  return result;
 }
 
 List<int> u64(int value) {
