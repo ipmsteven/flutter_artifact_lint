@@ -481,6 +481,50 @@ void main() {
       expect(report.objcMethods.single.className, 'NotificationDelegate');
     });
 
+    test('resolves Objective-C relative method list lists from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCMethodList(
+          className: 'RelativeDelegate',
+          methodNames: ['application:openURL:options:'],
+          relativeBaseMethods: true,
+        ),
+      );
+
+      expect(report.objcMethods.single.name, 'application:openURL:options:');
+      expect(report.objcMethods.single.className, 'RelativeDelegate');
+    });
+
+    test(
+      'resolves Objective-C relative method list lists from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithObjCMethodList(
+              className: 'RelativeNotificationDelegate',
+              methodNames: [
+                'userNotificationCenter:openSettingsForNotification:',
+              ],
+              paddingBeforeData: 4096,
+              relativeBaseMethods: true,
+            ),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(
+          report.objcMethods.single.name,
+          'userNotificationCenter:openSettingsForNotification:',
+        );
+        expect(
+          report.objcMethods.single.className,
+          'RelativeNotificationDelegate',
+        );
+      },
+    );
+
     test('resolves Objective-C small method lists from bytes', () {
       final report = const MachOParser().parse(
         thinMachOWithObjCSmallMethodList(
@@ -751,6 +795,7 @@ List<int> thinMachOWithObjCMethodList({
   required String className,
   required List<String> methodNames,
   int paddingBeforeData = 0,
+  bool relativeBaseMethods = false,
 }) {
   final classNameAddress = 0x100000100;
   final methodNameAddress = 0x100000400;
@@ -760,12 +805,23 @@ List<int> thinMachOWithObjCMethodList({
   final classNameData = cStringBytes([className]);
   final methodNameData = cStringBytes(methodNames);
   final methodNameOffsets = stringOffsets(methodNames);
-  final methodListAddress = classRoAddress + 40;
+  final relativeMethodListsAddress = classRoAddress + 40;
+  final methodListAddress = relativeBaseMethods
+      ? relativeMethodListsAddress + 16
+      : classRoAddress + 40;
   final classData = objcClass64Bytes(classRoAddress);
   final classRoData = objcClassRo64Bytes(
     classNameAddress,
-    baseMethodsAddress: methodListAddress,
+    baseMethodsAddress: relativeBaseMethods
+        ? relativeMethodListsAddress | 0x1
+        : methodListAddress,
   );
+  final relativeMethodListsData = relativeBaseMethods
+      ? objcRelativeMethodListList64Bytes(
+          listListAddress: relativeMethodListsAddress,
+          methodListAddresses: [methodListAddress],
+        )
+      : <int>[];
   final methodListData = objcMethodList64Bytes([
     for (final methodNameOffset in methodNameOffsets)
       methodNameAddress + methodNameOffset,
@@ -776,7 +832,9 @@ List<int> thinMachOWithObjCMethodList({
   final methodNameOffset = classNameOffset + classNameData.length;
   final classOffset = methodNameOffset + methodNameData.length;
   final classRoOffset = classOffset + classData.length;
-  final methodListOffset = classRoOffset + classRoData.length;
+  final relativeMethodListsOffset = classRoOffset + classRoData.length;
+  final methodListOffset =
+      relativeMethodListsOffset + relativeMethodListsData.length;
   final classListOffset = methodListOffset + methodListData.length;
 
   final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
@@ -810,7 +868,10 @@ List<int> thinMachOWithObjCMethodList({
       segmentName: '__DATA_CONST',
       address: classRoAddress,
       fileOffset: classRoOffset,
-      size: classRoData.length + methodListData.length,
+      size:
+          classRoData.length +
+          relativeMethodListsData.length +
+          methodListData.length,
     ),
   ]);
   final listCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
@@ -841,6 +902,7 @@ List<int> thinMachOWithObjCMethodList({
     ...methodNameData,
     ...classData,
     ...classRoData,
+    ...relativeMethodListsData,
     ...methodListData,
     ...classListData,
   ];
@@ -1109,6 +1171,21 @@ List<int> objcSmallMethodList64Bytes({
       ...u32(0),
       ...u32(0),
     ],
+  ];
+}
+
+List<int> objcRelativeMethodListList64Bytes({
+  required int listListAddress,
+  required List<int> methodListAddresses,
+}) {
+  return [
+    ...u32(8),
+    ...u32(methodListAddresses.length),
+    for (var i = 0; i < methodListAddresses.length; i += 1)
+      ...u64(
+        ((methodListAddresses[i] - (listListAddress + 8 + i * 8)) << 16) &
+            0xffffffffffff0000,
+      ),
   ];
 }
 

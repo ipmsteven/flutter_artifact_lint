@@ -149,9 +149,9 @@ Objective-C class references are resolved from `__objc_classrefs` and
 `__objc_classlist` through `class_t` and `class_ro_t` metadata to class-name
 strings when the relevant sections are present.
 Objective-C big and small method lists are resolved from
-`class_ro_t.baseMethods` through `method_list_t` entries back to
-`__objc_methname` strings when the relevant Objective-C metadata sections are
-present.
+`class_ro_t.baseMethods` and local relative method-list lists through
+`method_list_t` entries back to `__objc_methname` strings when the relevant
+Objective-C metadata sections are present.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or

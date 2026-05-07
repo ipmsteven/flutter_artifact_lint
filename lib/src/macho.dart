@@ -1252,7 +1252,7 @@ List<MachOObjCMethod> _readObjCMethodsFromFile(
       if (metadata == null || metadata.baseMethodsAddress == 0) continue;
 
       methods.addAll(
-        _readObjCMethodListFromFile(
+        _readObjCMethodListsFromFile(
           raf,
           fileOffset,
           availableLength,
@@ -1324,7 +1324,7 @@ List<MachOObjCMethod> _readObjCMethodsFromBytes(
       if (metadata == null || metadata.baseMethodsAddress == 0) continue;
 
       methods.addAll(
-        _readObjCMethodListFromBytes(
+        _readObjCMethodListsFromBytes(
           bytes,
           is64Bit: is64Bit,
           allSections: allSections,
@@ -1570,6 +1570,70 @@ _ObjCClassMetadata? _readObjCClassMetadataFromBytes(
   );
 }
 
+List<MachOObjCMethod> _readObjCMethodListsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required String className,
+  required int methodListAddress,
+}) {
+  if ((methodListAddress & _objcRelativeMethodListsFlag) != 0) {
+    return _readRelativeObjCMethodListsFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      is64Bit: is64Bit,
+      allSections: allSections,
+      stringSections: stringSections,
+      className: className,
+      listListAddress: methodListAddress & ~_objcRelativeMethodListsFlag,
+    );
+  }
+
+  return _readObjCMethodListFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    is64Bit: is64Bit,
+    allSections: allSections,
+    stringSections: stringSections,
+    className: className,
+    methodListAddress: methodListAddress,
+  );
+}
+
+List<MachOObjCMethod> _readObjCMethodListsFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required String className,
+  required int methodListAddress,
+}) {
+  if ((methodListAddress & _objcRelativeMethodListsFlag) != 0) {
+    return _readRelativeObjCMethodListsFromBytes(
+      bytes,
+      is64Bit: is64Bit,
+      allSections: allSections,
+      stringSections: stringSections,
+      className: className,
+      listListAddress: methodListAddress & ~_objcRelativeMethodListsFlag,
+    );
+  }
+
+  return _readObjCMethodListFromBytes(
+    bytes,
+    is64Bit: is64Bit,
+    allSections: allSections,
+    stringSections: stringSections,
+    className: className,
+    methodListAddress: methodListAddress,
+  );
+}
+
 List<MachOObjCMethod> _readObjCMethodListFromFile(
   RandomAccessFile raf,
   int fileOffset,
@@ -1652,6 +1716,120 @@ List<MachOObjCMethod> _readObjCMethodListFromBytes(
     methodListAddress: methodListAddress,
     layout: layout,
   );
+}
+
+List<MachOObjCMethod> _readRelativeObjCMethodListsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required String className,
+  required int listListAddress,
+}) {
+  final methods = <MachOObjCMethod>[];
+  final header = _readBytesAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    listListAddress,
+    8,
+  );
+  if (header == null) return methods;
+
+  final entrySize = _readU32(header, 0);
+  final entryCount = _readU32(header, 4);
+  if (!_canReadRelativeObjCMethodListList(entrySize, entryCount)) {
+    return methods;
+  }
+
+  for (var i = 0; i < entryCount; i += 1) {
+    final entryAddress = listListAddress + 8 + i * entrySize;
+    final entry = _readBytesAtAddressFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      allSections,
+      entryAddress,
+      8,
+    );
+    if (entry == null) continue;
+
+    final rawEntry = _readU64(entry, 0);
+    final imageIndex = rawEntry & 0xffff;
+    if (imageIndex != 0) continue;
+
+    final methodListAddress = entryAddress + _signExtend(rawEntry >> 16, 48);
+    methods.addAll(
+      _readObjCMethodListFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        className: className,
+        methodListAddress: methodListAddress,
+      ),
+    );
+  }
+
+  return methods;
+}
+
+List<MachOObjCMethod> _readRelativeObjCMethodListsFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required String className,
+  required int listListAddress,
+}) {
+  final methods = <MachOObjCMethod>[];
+  final header = _readBytesAtAddressFromBytes(
+    bytes,
+    allSections,
+    listListAddress,
+    8,
+  );
+  if (header == null) return methods;
+
+  final entrySize = _readU32(header, 0);
+  final entryCount = _readU32(header, 4);
+  if (!_canReadRelativeObjCMethodListList(entrySize, entryCount)) {
+    return methods;
+  }
+
+  for (var i = 0; i < entryCount; i += 1) {
+    final entryAddress = listListAddress + 8 + i * entrySize;
+    final entry = _readBytesAtAddressFromBytes(
+      bytes,
+      allSections,
+      entryAddress,
+      8,
+    );
+    if (entry == null) continue;
+
+    final rawEntry = _readU64(entry, 0);
+    final imageIndex = rawEntry & 0xffff;
+    if (imageIndex != 0) continue;
+
+    final methodListAddress = entryAddress + _signExtend(rawEntry >> 16, 48);
+    methods.addAll(
+      _readObjCMethodListFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        className: className,
+        methodListAddress: methodListAddress,
+      ),
+    );
+  }
+
+  return methods;
 }
 
 List<MachOObjCMethod> _readObjCMethodListEntriesFromFile(
@@ -2092,6 +2270,15 @@ bool _canReadMethodList(
   return byteLength > 0 && byteLength <= _maxObjCMethodListBytes;
 }
 
+bool _canReadRelativeObjCMethodListList(int entrySize, int entryCount) {
+  if (entrySize < 8 || entryCount <= 0 || entryCount > _maxObjCMethodCount) {
+    return false;
+  }
+
+  final byteLength = entrySize * entryCount;
+  return byteLength > 0 && byteLength <= _maxObjCMethodListBytes;
+}
+
 List<MachOSymbol> _readSymbolsFromFile(
   RandomAccessFile raf,
   int fileOffset,
@@ -2267,6 +2454,13 @@ int _readI32(List<int> bytes, int offset) {
   return (value & 0x80000000) == 0 ? value : value - 0x100000000;
 }
 
+int _signExtend(int value, int width) {
+  final signBit = 1 << (width - 1);
+  final mask = (1 << width) - 1;
+  final truncated = value & mask;
+  return (truncated & signBit) == 0 ? truncated : truncated - (1 << width);
+}
+
 int _readU64(List<int> bytes, int offset) {
   if (offset + 8 > bytes.length) return 0;
   return bytes[offset] |
@@ -2335,6 +2529,7 @@ const _fatMagic64 = 0xcafebabf;
 const _maxFatArchTableBytes = 64 * 1024;
 const _maxLoadCommandBytes = 8 * 1024 * 1024;
 const _objcDirectSelectorMethodListFlag = 0x40000000;
+const _objcRelativeMethodListsFlag = 0x1;
 const _objcSmallMethodListFlag = 0x80000000;
 const _maxObjCMethodCount = 8192;
 const _maxObjCMethodListBytes = 2 * 1024 * 1024;
