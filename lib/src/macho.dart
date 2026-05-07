@@ -1497,6 +1497,7 @@ List<MachOObjCSelector> _readObjCSelectorsFromFile(
 }) {
   final selectors = <MachOObjCSelector>[];
   final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
   final stringSections = _stringSections(segments).toList();
 
   for (final section in _sectionsNamed(segments, '__objc_selrefs')) {
@@ -1512,9 +1513,12 @@ List<MachOObjCSelector> _readObjCSelectorsFromFile(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final targetAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final targetAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final name = _readCStringAtAddressFromFile(
         raf,
         fileOffset,
@@ -1562,9 +1566,12 @@ List<MachOObjCClass> _readObjCClassesFromFile(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final classAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final classAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final name = _readObjCClassNameFromFile(
         raf,
         fileOffset,
@@ -1614,9 +1621,12 @@ List<MachOObjCProtocol> _readObjCProtocolsFromFile(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final protocolAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final protocolAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final name = _readObjCProtocolNameFromFile(
         raf,
         fileOffset,
@@ -1651,9 +1661,12 @@ List<MachOObjCProtocol> _readObjCProtocolsFromFile(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final classAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final classAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final metadata = _readObjCClassMetadataFromFile(
         raf,
         fileOffset,
@@ -1692,9 +1705,12 @@ List<MachOObjCProtocol> _readObjCProtocolsFromFile(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final categoryAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final categoryAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final metadata = _readObjCCategoryMetadataFromFile(
         raf,
         fileOffset,
@@ -1748,9 +1764,12 @@ List<MachOObjCMethod> _readObjCMethodsFromFile(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final classAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final classAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final metadata = _readObjCClassMetadataFromFile(
         raf,
         fileOffset,
@@ -1790,9 +1809,12 @@ List<MachOObjCMethod> _readObjCMethodsFromFile(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final categoryAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final categoryAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final metadata = _readObjCCategoryMetadataFromFile(
         raf,
         fileOffset,
@@ -1902,9 +1924,12 @@ List<MachOObjCMethod> _readObjCMethodsFromBytes(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final classAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final classAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final metadata = _readObjCClassMetadataFromBytes(
         bytes,
         is64Bit: is64Bit,
@@ -1939,9 +1964,12 @@ List<MachOObjCMethod> _readObjCMethodsFromBytes(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final categoryAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final categoryAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final metadata = _readObjCCategoryMetadataFromBytes(
         bytes,
         is64Bit: is64Bit,
@@ -1988,9 +2016,12 @@ List<MachOObjCClass> _readObjCClassesFromBytes(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final classAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final classAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final name = _readObjCClassNameFromBytes(
         bytes,
         is64Bit: is64Bit,
@@ -2035,9 +2066,12 @@ List<MachOObjCProtocol> _readObjCProtocolsFromBytes(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final protocolAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final protocolAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final name = _readObjCProtocolNameFromBytes(
         bytes,
         is64Bit: is64Bit,
@@ -2069,9 +2103,12 @@ List<MachOObjCProtocol> _readObjCProtocolsFromBytes(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final classAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final classAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final metadata = _readObjCClassMetadataFromBytes(
         bytes,
         is64Bit: is64Bit,
@@ -2105,9 +2142,12 @@ List<MachOObjCProtocol> _readObjCProtocolsFromBytes(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final categoryAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final categoryAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final metadata = _readObjCCategoryMetadataFromBytes(
         bytes,
         is64Bit: is64Bit,
@@ -2139,6 +2179,7 @@ List<MachOObjCSelector> _readObjCSelectorsFromBytes(
 }) {
   final selectors = <MachOObjCSelector>[];
   final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
   final stringSections = _stringSections(segments).toList();
 
   for (final section in _sectionsNamed(segments, '__objc_selrefs')) {
@@ -2153,9 +2194,12 @@ List<MachOObjCSelector> _readObjCSelectorsFromBytes(
       offset + pointerSize <= sectionBytes.length;
       offset += pointerSize
     ) {
-      final targetAddress = is64Bit
-          ? _readU64(sectionBytes, offset)
-          : _readU32(sectionBytes, offset);
+      final targetAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
       final name = _readCStringAtAddressFromBytes(
         bytes,
         stringSections,
@@ -3369,7 +3413,7 @@ int? _readPointerAtAddressFromFile(
   if (!_rangeWithin(pointerOffset, pointerSize, availableLength)) return null;
 
   final bytes = _readRange(raf, fileOffset + pointerOffset, pointerSize);
-  return is64Bit ? _readU64(bytes, 0) : _readU32(bytes, 0);
+  return _readPointerValue(bytes, 0, sections, is64Bit: is64Bit);
 }
 
 List<int>? _readBytesAtAddressFromFile(
@@ -3406,9 +3450,50 @@ int? _readPointerAtAddressFromBytes(
   final pointerOffset = section.fileOffset + (address - section.address);
   if (!_rangeWithin(pointerOffset, pointerSize, bytes.length)) return null;
 
-  return is64Bit
-      ? _readU64(bytes, pointerOffset)
-      : _readU32(bytes, pointerOffset);
+  return _readPointerValue(bytes, pointerOffset, sections, is64Bit: is64Bit);
+}
+
+int _readPointerValue(
+  List<int> bytes,
+  int offset,
+  List<MachOSection> sections, {
+  required bool is64Bit,
+}) {
+  final raw = is64Bit ? _readU64(bytes, offset) : _readU32(bytes, offset);
+  return _normalizedPointerValue(raw, sections, is64Bit: is64Bit);
+}
+
+int _normalizedPointerValue(
+  int raw,
+  List<MachOSection> sections, {
+  required bool is64Bit,
+}) {
+  if (!is64Bit ||
+      raw == 0 ||
+      _sectionContainingAddress(sections, raw) != null) {
+    return raw;
+  }
+
+  final imageBase = _imageBaseAddress(sections);
+  if (imageBase == null) return raw;
+
+  final offsetTarget = raw & _dyldChainedPointer64TargetMask;
+  final candidate = imageBase + offsetTarget;
+  return _sectionContainingAddress(sections, candidate) == null
+      ? raw
+      : candidate;
+}
+
+int? _imageBaseAddress(List<MachOSection> sections) {
+  int? minimumAddress;
+  for (final section in sections) {
+    if (section.address <= 0) continue;
+    if (minimumAddress == null || section.address < minimumAddress) {
+      minimumAddress = section.address;
+    }
+  }
+  if (minimumAddress == null) return null;
+  return minimumAddress - (minimumAddress % _machOPageSize);
 }
 
 List<int>? _readBytesAtAddressFromBytes(
@@ -4268,6 +4353,8 @@ const _maxLoadCommandBytes = 8 * 1024 * 1024;
 const _objcDirectSelectorMethodListFlag = 0x40000000;
 const _objcRelativeMethodListsFlag = 0x1;
 const _objcSmallMethodListFlag = 0x80000000;
+const _dyldChainedPointer64TargetMask = 0x0000000fffffffff;
+const _machOPageSize = 0x4000;
 const _maxObjCMethodCount = 8192;
 const _maxObjCMethodListBytes = 2 * 1024 * 1024;
 const _maxObjCProtocolCount = 8192;

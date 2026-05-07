@@ -584,6 +584,20 @@ void main() {
       );
     });
 
+    test('resolves chained Objective-C selector pointers from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCSelectorRefs([
+          'requestWhenInUseAuthorization',
+          'setDelegate:',
+        ], chainedPointers: true),
+      );
+
+      expect(
+        report.objcSelectors.map((selector) => selector.name),
+        containsAll(['requestWhenInUseAuthorization', 'setDelegate:']),
+      );
+    });
+
     test(
       'resolves Objective-C selector references from the file-backed parser',
       () async {
@@ -1160,6 +1174,7 @@ List<int> thinMachOWithSwiftTypeDescriptors(
 List<int> thinMachOWithObjCSelectorRefs(
   List<String> selectors, {
   int paddingBeforeData = 0,
+  bool chainedPointers = false,
 }) {
   final methnameAddress = 0x100000100;
   final selrefsAddress = 0x100000800;
@@ -1167,7 +1182,11 @@ List<int> thinMachOWithObjCSelectorRefs(
   final selectorOffsets = stringOffsets(selectors);
   final pointerData = [
     for (final selectorOffset in selectorOffsets)
-      ...u64(methnameAddress + selectorOffset),
+      ...u64(
+        chainedPointers
+            ? chainedPointer64Offset(methnameAddress + selectorOffset)
+            : methnameAddress + selectorOffset,
+      ),
   ];
   final commandsSize = 2 * (72 + 80);
   final methnameOffset = 32 + commandsSize + paddingBeforeData;
@@ -1202,6 +1221,10 @@ List<int> thinMachOWithObjCSelectorRefs(
     ...methnameData,
     ...pointerData,
   ];
+}
+
+int chainedPointer64Offset(int address, {int imageBase = 0x100000000}) {
+  return 0x0010000000000000 | (address - imageBase);
 }
 
 List<int> thinMachOWithObjCClassRef(
