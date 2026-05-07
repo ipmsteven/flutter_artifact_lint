@@ -284,6 +284,33 @@ void main() {
       );
     });
 
+    test('reads LC_DYSYMTAB metadata', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoDynamicSymtabCommand(
+            localSymbolIndex: 1,
+            localSymbolCount: 2,
+            externalSymbolIndex: 3,
+            externalSymbolCount: 4,
+            undefinedSymbolIndex: 7,
+            undefinedSymbolCount: 8,
+            indirectSymbolOffset: 4096,
+            indirectSymbolCount: 16,
+          ),
+        ]),
+      );
+
+      final table = report.dynamicSymbolTables.single;
+      expect(table.localSymbolIndex, 1);
+      expect(table.localSymbolCount, 2);
+      expect(table.externalSymbolIndex, 3);
+      expect(table.externalSymbolCount, 4);
+      expect(table.undefinedSymbolIndex, 7);
+      expect(table.undefinedSymbolCount, 8);
+      expect(table.indirectSymbolOffset, 4096);
+      expect(table.indirectSymbolCount, 16);
+    });
+
     test('reads C strings from Objective-C method sections', () {
       final report = const MachOParser().parse(
         thinMachOWithCStringSection(
@@ -453,6 +480,40 @@ List<int> machoSymtabCommand({
     ...u32(symbolCount),
     ...u32(stringOffset),
     ...u32(stringSize),
+  ];
+}
+
+List<int> machoDynamicSymtabCommand({
+  required int localSymbolIndex,
+  required int localSymbolCount,
+  required int externalSymbolIndex,
+  required int externalSymbolCount,
+  required int undefinedSymbolIndex,
+  required int undefinedSymbolCount,
+  required int indirectSymbolOffset,
+  required int indirectSymbolCount,
+}) {
+  return [
+    ...u32(0x0b), // LC_DYSYMTAB
+    ...u32(80),
+    ...u32(localSymbolIndex),
+    ...u32(localSymbolCount),
+    ...u32(externalSymbolIndex),
+    ...u32(externalSymbolCount),
+    ...u32(undefinedSymbolIndex),
+    ...u32(undefinedSymbolCount),
+    ...u32(0), // tocoff
+    ...u32(0), // ntoc
+    ...u32(0), // modtaboff
+    ...u32(0), // nmodtab
+    ...u32(0), // extrefsymoff
+    ...u32(0), // nextrefsyms
+    ...u32(indirectSymbolOffset),
+    ...u32(indirectSymbolCount),
+    ...u32(0), // extreloff
+    ...u32(0), // nextrel
+    ...u32(0), // locreloff
+    ...u32(0), // nlocrel
   ];
 }
 

@@ -15,6 +15,7 @@ class MachOReport {
     this.symbolTables = const [],
     this.symbols = const [],
     this.sectionStrings = const [],
+    this.dynamicSymbolTables = const [],
   });
 
   final List<MachODylib> linkedDylibs;
@@ -29,6 +30,7 @@ class MachOReport {
   final List<MachOSymbolTable> symbolTables;
   final List<MachOSymbol> symbols;
   final List<MachOSectionString> sectionStrings;
+  final List<MachODynamicSymbolTable> dynamicSymbolTables;
 }
 
 class MachODylib {
@@ -162,6 +164,28 @@ class MachOSymbolTable {
   final int stringSize;
 }
 
+class MachODynamicSymbolTable {
+  const MachODynamicSymbolTable({
+    required this.localSymbolIndex,
+    required this.localSymbolCount,
+    required this.externalSymbolIndex,
+    required this.externalSymbolCount,
+    required this.undefinedSymbolIndex,
+    required this.undefinedSymbolCount,
+    required this.indirectSymbolOffset,
+    required this.indirectSymbolCount,
+  });
+
+  final int localSymbolIndex;
+  final int localSymbolCount;
+  final int externalSymbolIndex;
+  final int externalSymbolCount;
+  final int undefinedSymbolIndex;
+  final int undefinedSymbolCount;
+  final int indirectSymbolOffset;
+  final int indirectSymbolCount;
+}
+
 class MachOSymbol {
   const MachOSymbol({
     required this.name,
@@ -212,6 +236,7 @@ class MachOParser {
       thinReport.symbolTables,
       thinReport.symbols,
       thinReport.sectionStrings,
+      thinReport.dynamicSymbolTables,
     );
   }
 
@@ -254,6 +279,7 @@ class MachOParser {
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
     final sectionStrings = <MachOSectionString>[];
+    final dynamicSymbolTables = <MachODynamicSymbolTable>[];
 
     for (
       var offset = 0;
@@ -285,6 +311,7 @@ class MachOParser {
       symbolTables.addAll(sliceReport.symbolTables);
       symbols.addAll(sliceReport.symbols);
       sectionStrings.addAll(sliceReport.sectionStrings);
+      dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
     }
 
     return _deduplicatedReport(
@@ -300,6 +327,7 @@ class MachOParser {
       symbolTables,
       symbols,
       sectionStrings,
+      dynamicSymbolTables,
     );
   }
 
@@ -370,6 +398,7 @@ class MachOParser {
       report.symbolTables,
       [...report.symbols, ...symbols],
       [...report.sectionStrings, ...sectionStrings],
+      report.dynamicSymbolTables,
     );
   }
 
@@ -401,6 +430,7 @@ class MachOParser {
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
     final sectionStrings = <MachOSectionString>[];
+    final dynamicSymbolTables = <MachODynamicSymbolTable>[];
 
     for (var i = 0; i < architectureCount; i += 1) {
       if (offset + archSize > bytes.length) break;
@@ -429,6 +459,7 @@ class MachOParser {
         symbolTables.addAll(sliceReport.symbolTables);
         symbols.addAll(sliceReport.symbols);
         sectionStrings.addAll(sliceReport.sectionStrings);
+        dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
       }
 
       offset += archSize;
@@ -447,6 +478,7 @@ class MachOParser {
       symbolTables,
       symbols,
       sectionStrings,
+      dynamicSymbolTables,
     );
   }
 
@@ -468,6 +500,7 @@ class MachOParser {
     final codeSignatures = <MachOCodeSignature>[];
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
+    final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     var offset = header.loadCommandsOffset;
 
     for (var i = 0; i < header.commandCount; i += 1) {
@@ -543,6 +576,21 @@ class MachOParser {
         );
       }
 
+      if (command == _lcDysymtab && commandSize >= 80) {
+        dynamicSymbolTables.add(
+          MachODynamicSymbolTable(
+            localSymbolIndex: _readU32(bytes, offset + 8),
+            localSymbolCount: _readU32(bytes, offset + 12),
+            externalSymbolIndex: _readU32(bytes, offset + 16),
+            externalSymbolCount: _readU32(bytes, offset + 20),
+            undefinedSymbolIndex: _readU32(bytes, offset + 24),
+            undefinedSymbolCount: _readU32(bytes, offset + 28),
+            indirectSymbolOffset: _readU32(bytes, offset + 56),
+            indirectSymbolCount: _readU32(bytes, offset + 60),
+          ),
+        );
+      }
+
       if (command == _lcUuid && commandSize >= 24) {
         uuids.add(MachOUuid(value: _uuidString(bytes, offset + 8)));
       }
@@ -611,6 +659,7 @@ class MachOParser {
       symbolTables: symbolTables,
       symbols: symbols,
       sectionStrings: sectionStrings,
+      dynamicSymbolTables: dynamicSymbolTables,
     );
   }
 }
@@ -628,6 +677,7 @@ MachOReport _deduplicatedReport(
   List<MachOSymbolTable> symbolTables = const [],
   List<MachOSymbol> symbols = const [],
   List<MachOSectionString> sectionStrings = const [],
+  List<MachODynamicSymbolTable> dynamicSymbolTables = const [],
 ]) {
   final byPath = <String, MachODylib>{};
   for (final dylib in dylibs) {
@@ -704,6 +754,12 @@ MachOReport _deduplicatedReport(
         sectionString;
   }
 
+  final byDynamicSymbolTable = <String, MachODynamicSymbolTable>{};
+  for (final dynamicSymbolTable in dynamicSymbolTables) {
+    byDynamicSymbolTable['${dynamicSymbolTable.localSymbolIndex}|${dynamicSymbolTable.localSymbolCount}|${dynamicSymbolTable.externalSymbolIndex}|${dynamicSymbolTable.externalSymbolCount}|${dynamicSymbolTable.undefinedSymbolIndex}|${dynamicSymbolTable.undefinedSymbolCount}|${dynamicSymbolTable.indirectSymbolOffset}|${dynamicSymbolTable.indirectSymbolCount}'] =
+        dynamicSymbolTable;
+  }
+
   return MachOReport(
     linkedDylibs: byPath.values.toList(),
     architectures: byArchitecture.values.toList(),
@@ -720,6 +776,7 @@ MachOReport _deduplicatedReport(
     symbolTables: bySymbolTable.values.toList(),
     symbols: bySymbol.values.toList(),
     sectionStrings: bySectionString.values.toList(),
+    dynamicSymbolTables: byDynamicSymbolTable.values.toList(),
   );
 }
 
@@ -1203,6 +1260,7 @@ const _mhMagic = 0xfeedface;
 const _mhMagic64 = 0xfeedfacf;
 const _lcSegment = 0x01;
 const _lcSymtab = 0x02;
+const _lcDysymtab = 0x0b;
 const _lcLoadDylib = 0x0c;
 const _lcIdDylib = 0x0d;
 const _lcSegment64 = 0x19;
