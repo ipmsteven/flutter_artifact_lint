@@ -592,6 +592,32 @@ void main() {
       expect(report.notes.single.dataSize, 128);
     });
 
+    test('reads generic linkedit data commands from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoLinkeditDataCommand(
+            command: 0x1e,
+            dataOffset: 4096,
+            dataSize: 32,
+          ),
+          machoLinkeditDataCommand(
+            command: 0x2e,
+            dataOffset: 8192,
+            dataSize: 64,
+          ),
+        ]),
+      );
+
+      expect(report.linkeditData, hasLength(2));
+      expect(report.linkeditData.first.commandName, 'LC_SEGMENT_SPLIT_INFO');
+      expect(report.linkeditData.first.dataOffset, 4096);
+      expect(
+        report.linkeditData.last.commandName,
+        'LC_LINKER_OPTIMIZATION_HINT',
+      );
+      expect(report.linkeditData.last.dataSize, 64);
+    });
+
     test('reads LC_DATA_IN_CODE entries from the file-backed parser', () {
       final root = Directory.systemTemp.createTempSync('fal_macho_');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -663,6 +689,34 @@ void main() {
       expect(report.notes.single.dataOffset, 8192);
       expect(report.notes.single.dataSize, 64);
     });
+
+    test(
+      'reads generic linkedit data commands from the file-backed parser',
+      () {
+        final root = Directory.systemTemp.createTempSync('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachO([
+              machoLinkeditDataCommand(
+                command: 0x2b,
+                dataOffset: 12288,
+                dataSize: 256,
+              ),
+            ]),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(
+          report.linkeditData.single.commandName,
+          'LC_DYLIB_CODE_SIGN_DRS',
+        );
+        expect(report.linkeditData.single.dataOffset, 12288);
+        expect(report.linkeditData.single.dataSize, 256);
+      },
+    );
 
     test(
       'reads compressed LC_DYLD_CHAINED_FIXUPS import symbols from bytes',
@@ -4404,6 +4458,14 @@ List<int> machoNoteCommand({
     ...u64(offset),
     ...u64(size),
   ];
+}
+
+List<int> machoLinkeditDataCommand({
+  required int command,
+  required int dataOffset,
+  required int dataSize,
+}) {
+  return [...u32(command), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
 }
 
 List<int> dyldBindInfoBytes(List<String> symbols) {

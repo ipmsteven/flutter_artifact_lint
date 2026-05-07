@@ -211,6 +211,14 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports arbitrary data regions from LC_NOTE.',
     fix: 'No action required.',
   ),
+  'ios.macho.linkedit_data': RuleDefinition(
+    ruleId: 'ios.macho.linkedit_data',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O linkedit data',
+    description: 'Reports generic linkedit data command offsets and sizes.',
+    fix: 'No action required.',
+  ),
   'ios.macho.code_signature': RuleDefinition(
     ruleId: 'ios.macho.code_signature',
     defaultLevel: FindingLevel.info,

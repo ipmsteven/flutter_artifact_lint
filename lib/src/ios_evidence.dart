@@ -66,6 +66,7 @@ enum MachOMetadataKind {
   dylinker,
   dyldEnvironment,
   note,
+  linkeditData,
   codeSignature,
   encryptionInfo,
   entryPoint,
@@ -240,6 +241,16 @@ class IosEvidenceExtractor {
             kind: MachOMetadataKind.note,
             sourcePath: entity.path,
             value: _noteValue(note),
+          ),
+        );
+      }
+
+      for (final data in machoReport.linkeditData) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.linkeditData,
+            sourcePath: entity.path,
+            value: _linkeditDataValue(data),
           ),
         );
       }
@@ -488,6 +499,10 @@ String _machoHeaderValue(MachOHeaderInfo header) {
 
 String _noteValue(MachONote note) {
   return 'owner ${note.owner}; offset ${note.dataOffset}; size ${note.dataSize}';
+}
+
+String _linkeditDataValue(MachOLinkeditData data) {
+  return '${data.commandName}; offset ${data.dataOffset}; size ${data.dataSize}';
 }
 
 String _chainedFixupsValue(MachOChainedFixups chainedFixup) {

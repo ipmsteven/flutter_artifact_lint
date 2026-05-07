@@ -270,6 +270,26 @@ void main() {
       expect(finding.message, contains('offset 4096'));
       expect(finding.message, contains('size 64'));
     });
+
+    test('reports generic linkedit data metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([
+          _machOLinkeditDataCommand(
+            command: 0x2e,
+            dataOffset: 4096,
+            dataSize: 128,
+          ),
+        ]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.linkedit_data',
+      );
+
+      expect(finding.message, contains('LC_LINKER_OPTIMIZATION_HINT'));
+      expect(finding.message, contains('offset 4096'));
+      expect(finding.message, contains('size 128'));
+    });
   });
 
   group('Mach-O architecture parser acceptance', () {
@@ -539,6 +559,19 @@ List<int> _machONoteCommand({
     ...List.filled(16 - ownerBytes.length, 0),
     ..._u64(offset),
     ..._u64(size),
+  ];
+}
+
+List<int> _machOLinkeditDataCommand({
+  required int command,
+  required int dataOffset,
+  required int dataSize,
+}) {
+  return [
+    ..._u32(command),
+    ..._u32(16),
+    ..._u32(dataOffset),
+    ..._u32(dataSize),
   ];
 }
 
