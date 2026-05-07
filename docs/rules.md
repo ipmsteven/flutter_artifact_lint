@@ -150,7 +150,8 @@ symbol string tables.
 Exported symbol names are parsed from `LC_DYLD_INFO` and
 `LC_DYLD_INFO_ONLY` export trie streams and from `LC_DYLD_EXPORTS_TRIE`.
 C-string values are parsed from `__cstring`, `__objc_methname`,
-`__objc_classname`, and `__objc_methtype` sections.
+`__objc_classname`, and `__objc_methtype` sections. Swift metadata strings are
+parsed from `__swift5_reflstr` and `__swift5_typeref` sections.
 Objective-C selector references are resolved from `__objc_selrefs` pointers
 back to `__objc_methname` strings when section virtual addresses and file
 ranges are available.

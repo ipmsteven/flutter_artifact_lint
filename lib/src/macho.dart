@@ -3084,6 +3084,8 @@ bool _isCStringSection(MachOSection section) {
     '__objc_methname',
     '__objc_classname',
     '__objc_methtype',
+    '__swift5_reflstr',
+    '__swift5_typeref',
   }.contains(section.name);
 }
 

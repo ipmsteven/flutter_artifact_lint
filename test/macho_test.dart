@@ -493,6 +493,42 @@ void main() {
       );
     });
 
+    test('reads strings from Swift metadata sections', () {
+      final reflectionReport = const MachOParser().parse(
+        thinMachOWithCStringSection(
+          segmentName: '__TEXT',
+          sectionName: '__swift5_reflstr',
+          values: ['cameraUsageDescription', 'locationWhenInUse'],
+        ),
+      );
+      final typeRefReport = const MachOParser().parse(
+        thinMachOWithCStringSection(
+          segmentName: '__TEXT',
+          sectionName: '__swift5_typeref',
+          values: [r'$s6Fields15PermissionStateV', 'So8NSObjectC'],
+        ),
+      );
+
+      expect(
+        reflectionReport.sectionStrings.map(
+          (sectionString) => sectionString.value,
+        ),
+        containsAll(['cameraUsageDescription', 'locationWhenInUse']),
+      );
+      expect(
+        reflectionReport.sectionStrings.map(
+          (sectionString) => sectionString.sectionName,
+        ),
+        everyElement('__TEXT.__swift5_reflstr'),
+      );
+      expect(
+        typeRefReport.sectionStrings.map(
+          (sectionString) => sectionString.value,
+        ),
+        containsAll([r'$s6Fields15PermissionStateV', 'So8NSObjectC']),
+      );
+    });
+
     test('reads C strings from the file-backed parser', () async {
       final root = await Directory.systemTemp.createTemp('fal_macho_');
       addTearDown(() => root.deleteSync(recursive: true));

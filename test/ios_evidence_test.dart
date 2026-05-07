@@ -78,6 +78,32 @@ void main() {
   });
 
   test(
+    'reports parsed Swift metadata section sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithCStringSection(
+          sectionName: '__swift5_reflstr',
+          values: ['cameraUsageDescription'],
+        ),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['cameraUsageDescription'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor(['cameraUsageDescription'])['cameraUsageDescription'],
+        contains('${binary.path}#__TEXT.__swift5_reflstr'),
+      );
+    },
+  );
+
+  test(
     'reports parsed Mach-O symbol table sources for token evidence',
     () async {
       final root = await Directory.systemTemp.createTemp('fal_evidence_');
