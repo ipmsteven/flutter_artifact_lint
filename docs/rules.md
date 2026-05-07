@@ -133,6 +133,10 @@ Additional diagnostic metadata is parsed from `LC_RPATH`, `LC_ID_DYLIB`,
 currently reports only the linkedit offset and size; it does not validate the
 signature blob or parse embedded entitlements.
 
+Segment and section names are parsed from `LC_SEGMENT` and `LC_SEGMENT_64` as
+internal parser metadata. They are not emitted as user-facing findings yet, but
+they provide the foundation for future Objective-C and Swift metadata scans.
+
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or
 debug-entitlement state without any matching binary evidence token.

@@ -214,6 +214,27 @@ void main() {
       expect(report.codeSignatures.single.dataSize, 512);
     });
 
+    test('reads LC_SEGMENT_64 segment and section names', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoSegment64Command('__TEXT', [
+            (name: '__text', segmentName: '__TEXT'),
+            (name: '__objc_methname', segmentName: '__TEXT'),
+          ]),
+        ]),
+      );
+
+      expect(report.segments.single.name, '__TEXT');
+      expect(
+        report.segments.single.sections.map((section) => section.name),
+        containsAll(['__text', '__objc_methname']),
+      );
+      expect(
+        report.segments.single.sections.map((section) => section.displayName),
+        containsAll(['__TEXT.__text', '__TEXT.__objc_methname']),
+      );
+    });
+
     test('ignores non-Mach-O bytes', () {
       final report = const MachOParser().parse(latin1.encode('not a binary'));
 
@@ -373,6 +394,43 @@ List<int> machoCodeSignatureCommand({
   ];
 }
 
+List<int> machoSegment64Command(
+  String segmentName,
+  List<({String name, String segmentName})> sections,
+) {
+  return [
+    ...u32(0x19), // LC_SEGMENT_64
+    ...u32(72 + sections.length * 80),
+    ...fixedString(segmentName, 16),
+    ...u64(0), // vmaddr
+    ...u64(0), // vmsize
+    ...u64(0), // fileoff
+    ...u64(0), // filesize
+    ...u32(0), // maxprot
+    ...u32(0), // initprot
+    ...u32(sections.length),
+    ...u32(0), // flags
+    for (final section in sections) ...section64Bytes(section),
+  ];
+}
+
+List<int> section64Bytes(({String name, String segmentName}) section) {
+  return [
+    ...fixedString(section.name, 16),
+    ...fixedString(section.segmentName, 16),
+    ...u64(0), // addr
+    ...u64(0), // size
+    ...u32(0), // offset
+    ...u32(0), // align
+    ...u32(0), // reloff
+    ...u32(0), // nreloc
+    ...u32(0), // flags
+    ...u32(0), // reserved1
+    ...u32(0), // reserved2
+    ...u32(0), // reserved3
+  ];
+}
+
 List<int> fatMachO(List<List<int>> slices, {bool fat64 = false}) {
   const headerSize = 8;
   final archSize = fat64 ? 32 : 20;
@@ -410,6 +468,14 @@ List<int> fatMachO(List<List<int>> slices, {bool fat64 = false}) {
 
 int sourceVersion(int a, int b, int c, int d, int e) {
   return (a << 40) | (b << 30) | (c << 20) | (d << 10) | e;
+}
+
+List<int> fixedString(String value, int length) {
+  final bytes = latin1.encode(value);
+  return [
+    ...bytes.take(length),
+    ...List.filled(length - (bytes.length > length ? length : bytes.length), 0),
+  ];
 }
 
 List<int> u32(int value) {

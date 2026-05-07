@@ -11,6 +11,7 @@ class MachOReport {
     this.uuids = const [],
     this.sourceVersions = const [],
     this.codeSignatures = const [],
+    this.segments = const [],
   });
 
   final List<MachODylib> linkedDylibs;
@@ -21,6 +22,7 @@ class MachOReport {
   final List<MachOUuid> uuids;
   final List<MachOSourceVersion> sourceVersions;
   final List<MachOCodeSignature> codeSignatures;
+  final List<MachOSegment> segments;
 }
 
 class MachODylib {
@@ -104,6 +106,22 @@ class MachOCodeSignature {
   final int dataSize;
 }
 
+class MachOSegment {
+  const MachOSegment({required this.name, required this.sections});
+
+  final String name;
+  final List<MachOSection> sections;
+}
+
+class MachOSection {
+  const MachOSection({required this.segmentName, required this.name});
+
+  final String segmentName;
+  final String name;
+
+  String get displayName => '$segmentName.$name';
+}
+
 class MachOParser {
   const MachOParser();
 
@@ -134,6 +152,7 @@ class MachOParser {
       thinReport.uuids,
       thinReport.sourceVersions,
       thinReport.codeSignatures,
+      thinReport.segments,
     );
   }
 
@@ -172,6 +191,7 @@ class MachOParser {
     final uuids = <MachOUuid>[];
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
+    final segments = <MachOSegment>[];
 
     for (
       var offset = 0;
@@ -199,6 +219,7 @@ class MachOParser {
       uuids.addAll(sliceReport.uuids);
       sourceVersions.addAll(sliceReport.sourceVersions);
       codeSignatures.addAll(sliceReport.codeSignatures);
+      segments.addAll(sliceReport.segments);
     }
 
     return _deduplicatedReport(
@@ -210,6 +231,7 @@ class MachOParser {
       uuids,
       sourceVersions,
       codeSignatures,
+      segments,
     );
   }
 
@@ -273,6 +295,7 @@ class MachOParser {
     final uuids = <MachOUuid>[];
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
+    final segments = <MachOSegment>[];
 
     for (var i = 0; i < architectureCount; i += 1) {
       if (offset + archSize > bytes.length) break;
@@ -297,6 +320,7 @@ class MachOParser {
         uuids.addAll(sliceReport.uuids);
         sourceVersions.addAll(sliceReport.sourceVersions);
         codeSignatures.addAll(sliceReport.codeSignatures);
+        segments.addAll(sliceReport.segments);
       }
 
       offset += archSize;
@@ -311,6 +335,7 @@ class MachOParser {
       uuids,
       sourceVersions,
       codeSignatures,
+      segments,
     );
   }
 
@@ -330,6 +355,7 @@ class MachOParser {
     final uuids = <MachOUuid>[];
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
+    final segments = <MachOSegment>[];
     var offset = header.loadCommandsOffset;
 
     for (var i = 0; i < header.commandCount; i += 1) {
@@ -379,6 +405,18 @@ class MachOParser {
         );
         if (path != null) {
           rpaths.add(MachORpath(path: path));
+        }
+      }
+
+      if (command == _lcSegment || command == _lcSegment64) {
+        final segment = _parseSegmentCommand(
+          bytes,
+          offset,
+          commandSize,
+          is64Bit: command == _lcSegment64,
+        );
+        if (segment != null) {
+          segments.add(segment);
         }
       }
 
@@ -436,6 +474,7 @@ class MachOParser {
       uuids: uuids,
       sourceVersions: sourceVersions,
       codeSignatures: codeSignatures,
+      segments: segments,
     );
   }
 }
@@ -449,6 +488,7 @@ MachOReport _deduplicatedReport(
   List<MachOUuid> uuids = const [],
   List<MachOSourceVersion> sourceVersions = const [],
   List<MachOCodeSignature> codeSignatures = const [],
+  List<MachOSegment> segments = const [],
 ]) {
   final byPath = <String, MachODylib>{};
   for (final dylib in dylibs) {
@@ -496,6 +536,17 @@ MachOReport _deduplicatedReport(
         codeSignature;
   }
 
+  final sectionsBySegment = <String, Map<String, MachOSection>>{};
+  for (final segment in segments) {
+    final sections = sectionsBySegment.putIfAbsent(
+      segment.name,
+      () => <String, MachOSection>{},
+    );
+    for (final section in segment.sections) {
+      sections['${section.segmentName}|${section.name}'] = section;
+    }
+  }
+
   return MachOReport(
     linkedDylibs: byPath.values.toList(),
     architectures: byArchitecture.values.toList(),
@@ -505,6 +556,10 @@ MachOReport _deduplicatedReport(
     uuids: byUuid.values.toList(),
     sourceVersions: bySourceVersion.values.toList(),
     codeSignatures: byCodeSignature.values.toList(),
+    segments: [
+      for (final entry in sectionsBySegment.entries)
+        MachOSegment(name: entry.key, sections: entry.value.values.toList()),
+    ],
   );
 }
 
@@ -603,6 +658,56 @@ String? _readCommandString(
   return value.isEmpty ? null : value;
 }
 
+MachOSegment? _parseSegmentCommand(
+  List<int> bytes,
+  int commandOffset,
+  int commandSize, {
+  required bool is64Bit,
+}) {
+  final commandEnd = commandOffset + commandSize;
+  final segmentHeaderSize = is64Bit ? 72 : 56;
+  if (commandSize < segmentHeaderSize) return null;
+
+  final segmentName = _readFixedString(bytes, commandOffset + 8, 16);
+  if (segmentName.isEmpty) return null;
+
+  final sectionCount = _readU32(bytes, commandOffset + (is64Bit ? 64 : 48));
+  final sectionSize = is64Bit ? 80 : 68;
+  final sectionStart = commandOffset + segmentHeaderSize;
+  final sections = <MachOSection>[];
+
+  for (var i = 0; i < sectionCount; i += 1) {
+    final offset = sectionStart + i * sectionSize;
+    if (offset + 32 > commandEnd) break;
+
+    final sectionName = _readFixedString(bytes, offset, 16);
+    if (sectionName.isEmpty) continue;
+
+    final sectionSegmentName = _readFixedString(bytes, offset + 16, 16);
+    sections.add(
+      MachOSection(
+        segmentName: sectionSegmentName.isEmpty
+            ? segmentName
+            : sectionSegmentName,
+        name: sectionName,
+      ),
+    );
+  }
+
+  return MachOSegment(name: segmentName, sections: sections);
+}
+
+String _readFixedString(List<int> bytes, int start, int length) {
+  if (start < 0 || start >= bytes.length || length <= 0) return '';
+
+  final end = start + length > bytes.length ? bytes.length : start + length;
+  var cursor = start;
+  while (cursor < end && bytes[cursor] != 0) {
+    cursor += 1;
+  }
+  return latin1.decode(bytes.sublist(start, cursor), allowInvalid: true);
+}
+
 int _readU32(List<int> bytes, int offset) {
   if (offset + 4 > bytes.length) return 0;
   return bytes[offset] |
@@ -680,8 +785,10 @@ const _maxFatArchTableBytes = 64 * 1024;
 const _maxLoadCommandBytes = 8 * 1024 * 1024;
 const _mhMagic = 0xfeedface;
 const _mhMagic64 = 0xfeedfacf;
+const _lcSegment = 0x01;
 const _lcLoadDylib = 0x0c;
 const _lcIdDylib = 0x0d;
+const _lcSegment64 = 0x19;
 const _lcLoadWeakDylib = 0x80000018;
 const _lcUuid = 0x1b;
 const _lcRpath = 0x8000001c;
