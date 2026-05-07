@@ -175,6 +175,34 @@ void main() {
   );
 
   test(
+    'reports parsed Swift field descriptor sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithSwiftFieldDescriptors([
+          (
+            ownerTypeName: 'PermissionState',
+            fields: [(name: 'authorized', typeName: 'Bool')],
+          ),
+        ]),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['authorized'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor(['authorized'])['authorized'],
+        contains('${binary.path}#__TEXT.__swift5_fieldmd'),
+      );
+    },
+  );
+
+  test(
     'reports parsed Mach-O symbol table sources for token evidence',
     () async {
       final root = await Directory.systemTemp.createTemp('fal_evidence_');
@@ -604,6 +632,103 @@ List<int> thinMachOWithSwiftProtocolDescriptors(List<String> protocolNames) {
     ...command,
     ...protoEntries,
     ...descriptorData,
+  ];
+}
+
+List<int> thinMachOWithSwiftFieldDescriptors(
+  List<({String ownerTypeName, List<({String name, String typeName})> fields})>
+  descriptors,
+) {
+  final fieldmdAddress = 0x100000100;
+  final reflstrAddress = 0x100000800;
+  final typerefAddress = 0x100001000;
+  final fieldNames = [
+    for (final descriptor in descriptors)
+      for (final field in descriptor.fields) field.name,
+  ];
+  final typeNames = [
+    for (final descriptor in descriptors) ...[
+      descriptor.ownerTypeName,
+      for (final field in descriptor.fields) field.typeName,
+    ],
+  ];
+  final reflstrData = cStringBytes(fieldNames);
+  final typerefData = cStringBytes(typeNames);
+  final fieldNameOffsets = stringOffsets(fieldNames);
+  final typeNameOffsets = stringOffsets(typeNames);
+  final fieldmdData = <int>[];
+  var fieldNameIndex = 0;
+  var typeNameIndex = 0;
+
+  for (final descriptor in descriptors) {
+    final descriptorAddress = fieldmdAddress + fieldmdData.length;
+    final ownerTypeNameAddress =
+        typerefAddress + typeNameOffsets[typeNameIndex];
+    typeNameIndex += 1;
+    fieldmdData.addAll([
+      ...u32(ownerTypeNameAddress - descriptorAddress),
+      ...u32(0),
+      ...u16(0),
+      ...u16(12),
+      ...u32(descriptor.fields.length),
+    ]);
+
+    for (var i = 0; i < descriptor.fields.length; i += 1) {
+      final recordAddress = descriptorAddress + 16 + i * 12;
+      final fieldTypeAddress = typerefAddress + typeNameOffsets[typeNameIndex];
+      final fieldNameAddress =
+          reflstrAddress + fieldNameOffsets[fieldNameIndex];
+      typeNameIndex += 1;
+      fieldNameIndex += 1;
+      fieldmdData.addAll([
+        ...u32(0),
+        ...u32(fieldTypeAddress - (recordAddress + 4)),
+        ...u32(fieldNameAddress - (recordAddress + 8)),
+      ]);
+    }
+  }
+
+  final commandSize = 72 + 3 * 80;
+  final fieldmdOffset = 32 + commandSize;
+  final reflstrOffset = fieldmdOffset + fieldmdData.length;
+  final typerefOffset = reflstrOffset + reflstrData.length;
+  final command = machoSegment64AddressCommand('__TEXT', [
+    (
+      name: '__swift5_fieldmd',
+      segmentName: '__TEXT',
+      address: fieldmdAddress,
+      fileOffset: fieldmdOffset,
+      size: fieldmdData.length,
+    ),
+    (
+      name: '__swift5_reflstr',
+      segmentName: '__TEXT',
+      address: reflstrAddress,
+      fileOffset: reflstrOffset,
+      size: reflstrData.length,
+    ),
+    (
+      name: '__swift5_typeref',
+      segmentName: '__TEXT',
+      address: typerefAddress,
+      fileOffset: typerefOffset,
+      size: typerefData.length,
+    ),
+  ]);
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(1),
+    ...u32(command.length),
+    ...u32(0),
+    ...u32(0),
+    ...command,
+    ...fieldmdData,
+    ...reflstrData,
+    ...typerefData,
   ];
 }
 

@@ -18,6 +18,7 @@ class MachOReport {
     this.swiftTypes = const [],
     this.swiftProtocols = const [],
     this.swiftProtocolConformances = const [],
+    this.swiftFields = const [],
     this.dynamicSymbolTables = const [],
     this.dyldInfos = const [],
     this.chainedFixups = const [],
@@ -45,6 +46,7 @@ class MachOReport {
   final List<MachOSwiftType> swiftTypes;
   final List<MachOSwiftProtocol> swiftProtocols;
   final List<MachOSwiftProtocolConformance> swiftProtocolConformances;
+  final List<MachOSwiftField> swiftFields;
   final List<MachODynamicSymbolTable> dynamicSymbolTables;
   final List<MachODyldInfo> dyldInfos;
   final List<MachOChainedFixups> chainedFixups;
@@ -208,6 +210,22 @@ class MachOSwiftProtocolConformance {
 
   final String typeName;
   final String protocolName;
+  final String sourceSection;
+  final int descriptorAddress;
+}
+
+class MachOSwiftField {
+  const MachOSwiftField({
+    required this.name,
+    required this.ownerTypeName,
+    required this.fieldTypeName,
+    required this.sourceSection,
+    required this.descriptorAddress,
+  });
+
+  final String name;
+  final String? ownerTypeName;
+  final String? fieldTypeName;
   final String sourceSection;
   final int descriptorAddress;
 }
@@ -404,6 +422,7 @@ class MachOParser {
       thinReport.swiftTypes,
       thinReport.swiftProtocols,
       thinReport.swiftProtocolConformances,
+      thinReport.swiftFields,
       thinReport.dynamicSymbolTables,
       thinReport.dyldInfos,
       thinReport.chainedFixups,
@@ -459,6 +478,7 @@ class MachOParser {
     final swiftTypes = <MachOSwiftType>[];
     final swiftProtocols = <MachOSwiftProtocol>[];
     final swiftProtocolConformances = <MachOSwiftProtocolConformance>[];
+    final swiftFields = <MachOSwiftField>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final dyldInfos = <MachODyldInfo>[];
     final chainedFixups = <MachOChainedFixups>[];
@@ -503,6 +523,7 @@ class MachOParser {
       swiftTypes.addAll(sliceReport.swiftTypes);
       swiftProtocols.addAll(sliceReport.swiftProtocols);
       swiftProtocolConformances.addAll(sliceReport.swiftProtocolConformances);
+      swiftFields.addAll(sliceReport.swiftFields);
       dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
       dyldInfos.addAll(sliceReport.dyldInfos);
       chainedFixups.addAll(sliceReport.chainedFixups);
@@ -531,6 +552,7 @@ class MachOParser {
       swiftTypes,
       swiftProtocols,
       swiftProtocolConformances,
+      swiftFields,
       dynamicSymbolTables,
       dyldInfos,
       chainedFixups,
@@ -634,6 +656,12 @@ class MachOParser {
       availableLength,
       segments: report.segments,
     );
+    final swiftFields = _readSwiftFieldsFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      segments: report.segments,
+    );
     final objcSelectors = _readObjCSelectorsFromFile(
       raf,
       fileOffset,
@@ -670,6 +698,7 @@ class MachOParser {
         swiftTypes.isEmpty &&
         swiftProtocols.isEmpty &&
         swiftProtocolConformances.isEmpty &&
+        swiftFields.isEmpty &&
         objcSelectors.isEmpty &&
         objcClasses.isEmpty &&
         objcProtocols.isEmpty &&
@@ -693,6 +722,7 @@ class MachOParser {
       [...report.swiftTypes, ...swiftTypes],
       [...report.swiftProtocols, ...swiftProtocols],
       [...report.swiftProtocolConformances, ...swiftProtocolConformances],
+      [...report.swiftFields, ...swiftFields],
       report.dynamicSymbolTables,
       report.dyldInfos,
       report.chainedFixups,
@@ -741,6 +771,7 @@ class MachOParser {
     final swiftTypes = <MachOSwiftType>[];
     final swiftProtocols = <MachOSwiftProtocol>[];
     final swiftProtocolConformances = <MachOSwiftProtocolConformance>[];
+    final swiftFields = <MachOSwiftField>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
     final dyldInfos = <MachODyldInfo>[];
     final chainedFixups = <MachOChainedFixups>[];
@@ -782,6 +813,7 @@ class MachOParser {
         swiftTypes.addAll(sliceReport.swiftTypes);
         swiftProtocols.addAll(sliceReport.swiftProtocols);
         swiftProtocolConformances.addAll(sliceReport.swiftProtocolConformances);
+        swiftFields.addAll(sliceReport.swiftFields);
         dynamicSymbolTables.addAll(sliceReport.dynamicSymbolTables);
         dyldInfos.addAll(sliceReport.dyldInfos);
         chainedFixups.addAll(sliceReport.chainedFixups);
@@ -813,6 +845,7 @@ class MachOParser {
       swiftTypes,
       swiftProtocols,
       swiftProtocolConformances,
+      swiftFields,
       dynamicSymbolTables,
       dyldInfos,
       chainedFixups,
@@ -1047,6 +1080,7 @@ class MachOParser {
       bytes,
       segments: segments,
     );
+    final swiftFields = _readSwiftFieldsFromBytes(bytes, segments: segments);
     final objcSelectors = _readObjCSelectorsFromBytes(
       bytes,
       is64Bit: header.is64Bit,
@@ -1084,6 +1118,7 @@ class MachOParser {
       swiftTypes: swiftTypes,
       swiftProtocols: swiftProtocols,
       swiftProtocolConformances: swiftProtocolConformances,
+      swiftFields: swiftFields,
       dynamicSymbolTables: dynamicSymbolTables,
       dyldInfos: dyldInfos,
       chainedFixups: chainedFixups,
@@ -1114,6 +1149,7 @@ MachOReport _deduplicatedReport(
   List<MachOSwiftType> swiftTypes = const [],
   List<MachOSwiftProtocol> swiftProtocols = const [],
   List<MachOSwiftProtocolConformance> swiftProtocolConformances = const [],
+  List<MachOSwiftField> swiftFields = const [],
   List<MachODynamicSymbolTable> dynamicSymbolTables = const [],
   List<MachODyldInfo> dyldInfos = const [],
   List<MachOChainedFixups> chainedFixups = const [],
@@ -1218,6 +1254,12 @@ MachOReport _deduplicatedReport(
         conformance;
   }
 
+  final bySwiftField = <String, MachOSwiftField>{};
+  for (final field in swiftFields) {
+    bySwiftField['${field.sourceSection}|${field.ownerTypeName}|${field.name}|${field.fieldTypeName}|${field.descriptorAddress}'] =
+        field;
+  }
+
   final byDynamicSymbolTable = <String, MachODynamicSymbolTable>{};
   for (final dynamicSymbolTable in dynamicSymbolTables) {
     byDynamicSymbolTable['${dynamicSymbolTable.localSymbolIndex}|${dynamicSymbolTable.localSymbolCount}|${dynamicSymbolTable.externalSymbolIndex}|${dynamicSymbolTable.externalSymbolCount}|${dynamicSymbolTable.undefinedSymbolIndex}|${dynamicSymbolTable.undefinedSymbolCount}|${dynamicSymbolTable.indirectSymbolOffset}|${dynamicSymbolTable.indirectSymbolCount}'] =
@@ -1297,6 +1339,7 @@ MachOReport _deduplicatedReport(
     swiftTypes: bySwiftType.values.toList(),
     swiftProtocols: bySwiftProtocol.values.toList(),
     swiftProtocolConformances: bySwiftProtocolConformance.values.toList(),
+    swiftFields: bySwiftField.values.toList(),
     dynamicSymbolTables: byDynamicSymbolTable.values.toList(),
     dyldInfos: byDyldInfo.values.toList(),
     chainedFixups: byChainedFixups.values.toList(),
@@ -1655,6 +1698,85 @@ List<MachOSwiftProtocolConformance> _readSwiftProtocolConformancesFromFile(
   }
 
   return conformances;
+}
+
+List<MachOSwiftField> _readSwiftFieldsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required List<MachOSegment> segments,
+}) {
+  final fields = <MachOSwiftField>[];
+  final allSections = _allSections(segments).toList();
+
+  for (final section in _sectionsNamed(segments, '__swift5_fieldmd')) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    final sectionBytes = _readRange(
+      raf,
+      fileOffset + section.fileOffset,
+      section.size,
+    );
+    var offset = 0;
+    while (offset + _swiftFieldDescriptorHeaderBytes <= sectionBytes.length) {
+      final descriptorAddress = section.address + offset;
+      final fieldRecordSize = _readU16(sectionBytes, offset + 10);
+      final fieldCount = _readU32(sectionBytes, offset + 12);
+      final descriptorByteLength = _swiftFieldDescriptorByteLength(
+        fieldRecordSize,
+        fieldCount,
+      );
+      if (descriptorByteLength == null ||
+          offset + descriptorByteLength > sectionBytes.length) {
+        break;
+      }
+
+      final ownerTypeName = _readRelativeSwiftStringFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        pointerAddress: descriptorAddress,
+        relativeOffset: _readI32(sectionBytes, offset),
+      );
+      for (var i = 0; i < fieldCount; i += 1) {
+        final recordOffset =
+            offset + _swiftFieldDescriptorHeaderBytes + i * fieldRecordSize;
+        final recordAddress = section.address + recordOffset;
+        final fieldTypeName = _readRelativeSwiftStringFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          allSections,
+          pointerAddress: recordAddress + 4,
+          relativeOffset: _readI32(sectionBytes, recordOffset + 4),
+        );
+        final fieldName = _readRelativeSwiftStringFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          allSections,
+          pointerAddress: recordAddress + 8,
+          relativeOffset: _readI32(sectionBytes, recordOffset + 8),
+        );
+        if (fieldName == null) continue;
+
+        fields.add(
+          MachOSwiftField(
+            name: fieldName,
+            ownerTypeName: ownerTypeName,
+            fieldTypeName: fieldTypeName,
+            sourceSection: section.displayName,
+            descriptorAddress: descriptorAddress,
+          ),
+        );
+      }
+
+      offset += descriptorByteLength;
+    }
+  }
+
+  return fields;
 }
 
 List<MachOObjCSelector> _readObjCSelectorsFromFile(
@@ -2142,6 +2264,76 @@ List<MachOSwiftProtocolConformance> _readSwiftProtocolConformancesFromBytes(
   }
 
   return conformances;
+}
+
+List<MachOSwiftField> _readSwiftFieldsFromBytes(
+  List<int> bytes, {
+  required List<MachOSegment> segments,
+}) {
+  final fields = <MachOSwiftField>[];
+  final allSections = _allSections(segments).toList();
+
+  for (final section in _sectionsNamed(segments, '__swift5_fieldmd')) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    final sectionBytes = bytes.sublist(
+      section.fileOffset,
+      section.fileOffset + section.size,
+    );
+    var offset = 0;
+    while (offset + _swiftFieldDescriptorHeaderBytes <= sectionBytes.length) {
+      final descriptorAddress = section.address + offset;
+      final fieldRecordSize = _readU16(sectionBytes, offset + 10);
+      final fieldCount = _readU32(sectionBytes, offset + 12);
+      final descriptorByteLength = _swiftFieldDescriptorByteLength(
+        fieldRecordSize,
+        fieldCount,
+      );
+      if (descriptorByteLength == null ||
+          offset + descriptorByteLength > sectionBytes.length) {
+        break;
+      }
+
+      final ownerTypeName = _readRelativeSwiftStringFromBytes(
+        bytes,
+        allSections,
+        pointerAddress: descriptorAddress,
+        relativeOffset: _readI32(sectionBytes, offset),
+      );
+      for (var i = 0; i < fieldCount; i += 1) {
+        final recordOffset =
+            offset + _swiftFieldDescriptorHeaderBytes + i * fieldRecordSize;
+        final recordAddress = section.address + recordOffset;
+        final fieldTypeName = _readRelativeSwiftStringFromBytes(
+          bytes,
+          allSections,
+          pointerAddress: recordAddress + 4,
+          relativeOffset: _readI32(sectionBytes, recordOffset + 4),
+        );
+        final fieldName = _readRelativeSwiftStringFromBytes(
+          bytes,
+          allSections,
+          pointerAddress: recordAddress + 8,
+          relativeOffset: _readI32(sectionBytes, recordOffset + 8),
+        );
+        if (fieldName == null) continue;
+
+        fields.add(
+          MachOSwiftField(
+            name: fieldName,
+            ownerTypeName: ownerTypeName,
+            fieldTypeName: fieldTypeName,
+            sourceSection: section.displayName,
+            descriptorAddress: descriptorAddress,
+          ),
+        );
+      }
+
+      offset += descriptorByteLength;
+    }
+  }
+
+  return fields;
 }
 
 List<MachOObjCMethod> _readObjCMethodsFromBytes(
@@ -3608,6 +3800,40 @@ String? _readSwiftContextDescriptorNameFromBytes(
   return _isPlausibleSwiftTypeName(name) ? name : null;
 }
 
+String? _readRelativeSwiftStringFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength,
+  List<MachOSection> allSections, {
+  required int pointerAddress,
+  required int relativeOffset,
+}) {
+  if (relativeOffset == 0) return null;
+  final value = _readCStringAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    pointerAddress + relativeOffset,
+  );
+  return _isPlausibleSwiftTypeName(value) ? value : null;
+}
+
+String? _readRelativeSwiftStringFromBytes(
+  List<int> bytes,
+  List<MachOSection> allSections, {
+  required int pointerAddress,
+  required int relativeOffset,
+}) {
+  if (relativeOffset == 0) return null;
+  final value = _readCStringAtAddressFromBytes(
+    bytes,
+    allSections,
+    pointerAddress + relativeOffset,
+  );
+  return _isPlausibleSwiftTypeName(value) ? value : null;
+}
+
 bool _isPlausibleSwiftTypeName(String? value) {
   if (value == null || value.isEmpty || value.length > 512) return false;
   return value.codeUnits.every((codeUnit) {
@@ -3893,6 +4119,18 @@ List<int>? _readBytesAtAddressFromBytes(
   if (!_rangeWithin(dataOffset, length, bytes.length)) return null;
 
   return bytes.sublist(dataOffset, dataOffset + length);
+}
+
+int? _swiftFieldDescriptorByteLength(int fieldRecordSize, int fieldCount) {
+  if (fieldRecordSize < _swiftFieldRecordMinimumBytes ||
+      fieldRecordSize > _maxSwiftFieldRecordBytes ||
+      fieldCount > _maxSwiftFieldCount) {
+    return null;
+  }
+
+  final byteLength =
+      _swiftFieldDescriptorHeaderBytes + fieldRecordSize * fieldCount;
+  return byteLength <= _maxSwiftFieldDescriptorBytes ? byteLength : null;
 }
 
 _ObjCMethodListLayout? _objcMethodListLayout(
@@ -4735,8 +4973,13 @@ const _maxLoadCommandBytes = 8 * 1024 * 1024;
 const _objcDirectSelectorMethodListFlag = 0x40000000;
 const _objcRelativeMethodListsFlag = 0x1;
 const _objcSmallMethodListFlag = 0x80000000;
+const _swiftFieldDescriptorHeaderBytes = 16;
+const _swiftFieldRecordMinimumBytes = 12;
 const _dyldChainedPointer64TargetMask = 0x0000000fffffffff;
 const _machOPageSize = 0x4000;
+const _maxSwiftFieldCount = 8192;
+const _maxSwiftFieldDescriptorBytes = 2 * 1024 * 1024;
+const _maxSwiftFieldRecordBytes = 4096;
 const _maxObjCMethodCount = 8192;
 const _maxObjCMethodListBytes = 2 * 1024 * 1024;
 const _maxObjCProtocolCount = 8192;

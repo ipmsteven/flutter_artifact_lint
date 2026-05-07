@@ -590,6 +590,41 @@ void main() {
       );
     });
 
+    test('resolves Swift field descriptors from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithSwiftFieldDescriptors([
+          (
+            ownerTypeName: 'PermissionState',
+            fields: [
+              (name: 'authorized', typeName: 'Bool'),
+              (name: 'cameraPurpose', typeName: 'String'),
+            ],
+          ),
+          (
+            ownerTypeName: 'CameraPurpose',
+            fields: [(name: 'label', typeName: 'String')],
+          ),
+        ]),
+      );
+
+      expect(
+        report.swiftFields.map((field) => field.ownerTypeName),
+        containsAll(['PermissionState', 'CameraPurpose']),
+      );
+      expect(
+        report.swiftFields.map((field) => field.name),
+        containsAll(['authorized', 'cameraPurpose', 'label']),
+      );
+      expect(
+        report.swiftFields.map((field) => field.fieldTypeName),
+        containsAll(['Bool', 'String']),
+      );
+      expect(
+        report.swiftFields.map((field) => field.sourceSection),
+        everyElement('__TEXT.__swift5_fieldmd'),
+      );
+    });
+
     test('reads C strings from the file-backed parser', () async {
       final root = await Directory.systemTemp.createTemp('fal_macho_');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -1334,6 +1369,98 @@ List<int> thinMachOWithSwiftProtocolDescriptors(
     ...List.filled(paddingBeforeData, 0),
     ...protoEntries,
     ...descriptorData,
+  ];
+}
+
+List<int> thinMachOWithSwiftFieldDescriptors(
+  List<({String ownerTypeName, List<({String name, String typeName})> fields})>
+  descriptors, {
+  int paddingBeforeData = 0,
+}) {
+  final fieldmdAddress = 0x100000100;
+  final reflstrAddress = 0x100000800;
+  final typerefAddress = 0x100001000;
+  final fieldNames = [
+    for (final descriptor in descriptors)
+      for (final field in descriptor.fields) field.name,
+  ];
+  final typeNames = [
+    for (final descriptor in descriptors) ...[
+      descriptor.ownerTypeName,
+      for (final field in descriptor.fields) field.typeName,
+    ],
+  ];
+  final reflstrData = cStringBytes(fieldNames);
+  final typerefData = cStringBytes(typeNames);
+  final fieldNameOffsets = stringOffsets(fieldNames);
+  final typeNameOffsets = stringOffsets(typeNames);
+  final fieldmdData = <int>[];
+  var fieldNameIndex = 0;
+  var typeNameIndex = 0;
+
+  for (final descriptor in descriptors) {
+    final descriptorAddress = fieldmdAddress + fieldmdData.length;
+    final ownerTypeNameAddress =
+        typerefAddress + typeNameOffsets[typeNameIndex];
+    typeNameIndex += 1;
+    fieldmdData.addAll([
+      ...u32(ownerTypeNameAddress - descriptorAddress),
+      ...u32(0), // superclass
+      ...u16(0), // kind
+      ...u16(12), // field record size
+      ...u32(descriptor.fields.length),
+    ]);
+
+    for (var i = 0; i < descriptor.fields.length; i += 1) {
+      final recordAddress = descriptorAddress + 16 + i * 12;
+      final fieldTypeAddress = typerefAddress + typeNameOffsets[typeNameIndex];
+      final fieldNameAddress =
+          reflstrAddress + fieldNameOffsets[fieldNameIndex];
+      typeNameIndex += 1;
+      fieldNameIndex += 1;
+      fieldmdData.addAll([
+        ...u32(0), // flags
+        ...u32(fieldTypeAddress - (recordAddress + 4)),
+        ...u32(fieldNameAddress - (recordAddress + 8)),
+      ]);
+    }
+  }
+
+  final commandSize = 72 + 3 * 80;
+  final fieldmdOffset = 32 + commandSize + paddingBeforeData;
+  final reflstrOffset = fieldmdOffset + fieldmdData.length;
+  final typerefOffset = reflstrOffset + reflstrData.length;
+  final command = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__swift5_fieldmd',
+      segmentName: '__TEXT',
+      address: fieldmdAddress,
+      fileOffset: fieldmdOffset,
+      size: fieldmdData.length,
+    ),
+    (
+      name: '__swift5_reflstr',
+      segmentName: '__TEXT',
+      address: reflstrAddress,
+      fileOffset: reflstrOffset,
+      size: reflstrData.length,
+    ),
+    (
+      name: '__swift5_typeref',
+      segmentName: '__TEXT',
+      address: typerefAddress,
+      fileOffset: typerefOffset,
+      size: typerefData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
+    ...List.filled(paddingBeforeData, 0),
+    ...fieldmdData,
+    ...reflstrData,
+    ...typerefData,
   ];
 }
 

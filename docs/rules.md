@@ -157,7 +157,9 @@ the descriptor and name target sections are present in the artifact. Swift
 protocol names are resolved from `__swift5_protos` protocol descriptors. Swift
 protocol conformance descriptors are resolved from `__swift5_proto` to recover
 the conforming type name and protocol name when both target descriptors are
-present.
+present. Swift field descriptors are resolved from `__swift5_fieldmd` to recover
+stored field names and raw owner/type references when the referenced Swift
+metadata strings are present.
 Objective-C selector references are resolved from `__objc_selrefs` pointers
 back to `__objc_methname` strings when section virtual addresses and file
 ranges are available.

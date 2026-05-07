@@ -35,7 +35,14 @@ public protocol PermissionProtocol {
 }
 
 public struct PermissionState: PermissionProtocol {
-  public init() {}
+  public let authorized: Bool
+  public let cameraPurpose: String
+
+  public init(authorized: Bool, cameraPurpose: String) {
+    self.authorized = authorized
+    self.cameraPurpose = cameraPurpose
+  }
+
   public func requestWhenInUseAuthorization() {
   }
 }
@@ -47,7 +54,10 @@ public struct CameraPurpose {
   }
 }
 
-let value: PermissionProtocol = PermissionState()
+let value: PermissionProtocol = PermissionState(
+  authorized: true,
+  cameraPurpose: "camera"
+)
 value.requestWhenInUseAuthorization()
 let _ = CameraPurpose(label: "camera")
 ''');
@@ -85,6 +95,10 @@ let _ = CameraPurpose(label: "camera")
       expect(
         report.swiftProtocols.map((protocol) => protocol.name),
         contains('PermissionProtocol'),
+      );
+      expect(
+        report.swiftFields.map((field) => field.name),
+        containsAll(['authorized', 'cameraPurpose', 'label']),
       );
     },
     timeout: const Timeout(Duration(minutes: 3)),
