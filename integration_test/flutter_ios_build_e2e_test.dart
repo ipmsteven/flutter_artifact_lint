@@ -78,12 +78,12 @@ ${plistContent.substring(rootDictEnd + '</dict>'.length)}''');
       final payload = jsonDecode(result.stdout) as Map<String, Object?>;
       expect(payload['result'], 'FAILED');
       final findings = payload['findings'] as List<Object?>;
-      expect(
-        findings.cast<Map<String, Object?>>().map(
-          (finding) => finding['ruleId'],
-        ),
-        contains('ios.permission.camera.empty'),
+      final ruleIds = findings.cast<Map<String, Object?>>().map(
+        (finding) => finding['ruleId'],
       );
+      expect(ruleIds, contains('ios.permission.camera.empty'));
+      expect(ruleIds, contains('ios.macho.architecture'));
+      expect(ruleIds, contains('ios.macho.build_version'));
     },
     timeout: const Timeout(Duration(minutes: 12)),
   );
