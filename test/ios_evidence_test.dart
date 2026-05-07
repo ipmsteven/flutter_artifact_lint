@@ -101,6 +101,31 @@ void main() {
       );
     },
   );
+
+  test(
+    'reports parsed Objective-C selector reference sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithObjCSelectorRefs(['requestWhenInUseAuthorization']),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['requestWhenInUseAuthorization'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor([
+          'requestWhenInUseAuthorization',
+        ])['requestWhenInUseAuthorization'],
+        contains('${binary.path}#__DATA_CONST.__objc_selrefs'),
+      );
+    },
+  );
 }
 
 List<int> thinMachO(List<List<int>> commands) {
@@ -199,9 +224,75 @@ List<int> thinMachOWithSymbolTable(List<String> symbols) {
   ];
 }
 
+List<int> thinMachOWithObjCSelectorRefs(List<String> selectors) {
+  final methnameAddress = 0x100000100;
+  final selrefsAddress = 0x100000800;
+  final methnameData = cStringBytes(selectors);
+  final selectorOffsets = stringOffsets(selectors);
+  final pointerData = [
+    for (final selectorOffset in selectorOffsets)
+      ...u64(methnameAddress + selectorOffset),
+  ];
+  final commandsSize = 2 * (72 + 80);
+  final methnameOffset = 32 + commandsSize;
+  final selrefsOffset = methnameOffset + methnameData.length;
+  final textCommand = machoSegment64AddressCommand('__TEXT', [
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: methnameAddress,
+      fileOffset: methnameOffset,
+      size: methnameData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: '__objc_selrefs',
+      segmentName: '__DATA_CONST',
+      address: selrefsAddress,
+      fileOffset: selrefsOffset,
+      size: pointerData.length,
+    ),
+  ]);
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(2),
+    ...u32(textCommand.length + dataCommand.length),
+    ...u32(0),
+    ...u32(0),
+    ...textCommand,
+    ...dataCommand,
+    ...methnameData,
+    ...pointerData,
+  ];
+}
+
 List<int> machoSegment64Command(
   String segmentName,
   List<({String name, String segmentName, int fileOffset, int size})> sections,
+) {
+  return machoSegment64AddressCommand(segmentName, [
+    for (final section in sections)
+      (
+        name: section.name,
+        segmentName: section.segmentName,
+        address: 0,
+        fileOffset: section.fileOffset,
+        size: section.size,
+      ),
+  ]);
+}
+
+List<int> machoSegment64AddressCommand(
+  String segmentName,
+  List<
+    ({String name, String segmentName, int address, int fileOffset, int size})
+  >
+  sections,
 ) {
   return [
     ...u32(0x19),
@@ -218,7 +309,7 @@ List<int> machoSegment64Command(
     for (final section in sections) ...[
       ...fixedString(section.name, 16),
       ...fixedString(section.segmentName, 16),
-      ...u64(0),
+      ...u64(section.address),
       ...u64(section.size),
       ...u32(section.fileOffset),
       ...u32(0),
@@ -236,6 +327,16 @@ List<int> cStringBytes(List<String> values) {
   return [
     for (final value in values) ...[...latin1.encode(value), 0],
   ];
+}
+
+List<int> stringOffsets(List<String> values) {
+  final offsets = <int>[];
+  var offset = 0;
+  for (final value in values) {
+    offsets.add(offset);
+    offset += latin1.encode(value).length + 1;
+  }
+  return offsets;
 }
 
 List<int> fatMachO(

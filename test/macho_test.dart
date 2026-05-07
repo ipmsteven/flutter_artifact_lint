@@ -355,6 +355,50 @@ void main() {
       );
     });
 
+    test('resolves Objective-C selector references from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCSelectorRefs([
+          'requestWhenInUseAuthorization',
+          'setDelegate:',
+        ]),
+      );
+
+      expect(
+        report.objcSelectors.map((selector) => selector.name),
+        containsAll(['requestWhenInUseAuthorization', 'setDelegate:']),
+      );
+      expect(
+        report.objcSelectors.map((selector) => selector.sourceSection),
+        everyElement('__DATA_CONST.__objc_selrefs'),
+      );
+    });
+
+    test(
+      'resolves Objective-C selector references from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithObjCSelectorRefs([
+              'requestAuthorizationWithOptions:completionHandler:',
+              'authorizationStatus',
+            ], paddingBeforeData: 4096),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(
+          report.objcSelectors.map((selector) => selector.name),
+          containsAll([
+            'requestAuthorizationWithOptions:completionHandler:',
+            'authorizationStatus',
+          ]),
+        );
+      },
+    );
+
     test('ignores non-Mach-O bytes', () {
       final report = const MachOParser().parse(latin1.encode('not a binary'));
 
@@ -449,6 +493,53 @@ List<int> thinMachOWithCStringSection({
   ];
 }
 
+List<int> thinMachOWithObjCSelectorRefs(
+  List<String> selectors, {
+  int paddingBeforeData = 0,
+}) {
+  final methnameAddress = 0x100000100;
+  final selrefsAddress = 0x100000800;
+  final methnameData = cStringBytes(selectors);
+  final selectorOffsets = stringOffsets(selectors);
+  final pointerData = [
+    for (final selectorOffset in selectorOffsets)
+      ...u64(methnameAddress + selectorOffset),
+  ];
+  final commandsSize = 2 * (72 + 80);
+  final methnameOffset = 32 + commandsSize + paddingBeforeData;
+  final selrefsOffset = methnameOffset + methnameData.length;
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: methnameAddress,
+      fileOffset: methnameOffset,
+      size: methnameData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_selrefs',
+      segmentName: '__DATA_CONST',
+      address: selrefsAddress,
+      fileOffset: selrefsOffset,
+      size: pointerData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 2,
+      sizeofcmds: textCommand.length + dataCommand.length,
+    ),
+    ...textCommand,
+    ...dataCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...methnameData,
+    ...pointerData,
+  ];
+}
+
 List<int> machOHeader64({
   required int ncmds,
   required int sizeofcmds,
@@ -538,6 +629,16 @@ List<int> cStringBytes(List<String> values) {
   return [
     for (final value in values) ...[...latin1.encode(value), 0],
   ];
+}
+
+List<int> stringOffsets(List<String> values) {
+  final offsets = <int>[];
+  var offset = 0;
+  for (final value in values) {
+    offsets.add(offset);
+    offset += latin1.encode(value).length + 1;
+  }
+  return offsets;
 }
 
 List<int> machOLoadDylibCommand(
@@ -660,6 +761,25 @@ List<int> machoSegment64RangeCommand(
   String segmentName,
   List<({String name, String segmentName, int fileOffset, int size})> sections,
 ) {
+  return machoSegment64AddressRangeCommand(segmentName, [
+    for (final section in sections)
+      (
+        name: section.name,
+        segmentName: section.segmentName,
+        address: 0,
+        fileOffset: section.fileOffset,
+        size: section.size,
+      ),
+  ]);
+}
+
+List<int> machoSegment64AddressRangeCommand(
+  String segmentName,
+  List<
+    ({String name, String segmentName, int address, int fileOffset, int size})
+  >
+  sections,
+) {
   return [
     ...u32(0x19), // LC_SEGMENT_64
     ...u32(72 + sections.length * 80),
@@ -677,12 +797,13 @@ List<int> machoSegment64RangeCommand(
 }
 
 List<int> section64Bytes(
-  ({String name, String segmentName, int fileOffset, int size}) section,
+  ({String name, String segmentName, int address, int fileOffset, int size})
+  section,
 ) {
   return [
     ...fixedString(section.name, 16),
     ...fixedString(section.segmentName, 16),
-    ...u64(0), // addr
+    ...u64(section.address),
     ...u64(section.size),
     ...u32(section.fileOffset),
     ...u32(0), // align

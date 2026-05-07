@@ -143,6 +143,9 @@ Dynamic symbol table ranges and indirect-symbol table metadata are parsed from
 C-string values are parsed from `__cstring`, `__objc_methname`,
 `__objc_classname`, and `__objc_methtype` sections. These are internal parser
 metadata for more precise future Objective-C evidence rules.
+Objective-C selector references are resolved from `__objc_selrefs` pointers
+back to `__objc_methname` strings when section virtual addresses and file
+ranges are available.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
 artifact can contain push, app group, iCloud, associated-domain, or
