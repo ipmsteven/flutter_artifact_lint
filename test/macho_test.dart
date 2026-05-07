@@ -794,6 +794,25 @@ void main() {
       );
     });
 
+    test(
+      'resolves Swift field descriptor superclass references from bytes',
+      () {
+        final report = const MachOParser().parse(
+          thinMachOWithSwiftFieldDescriptors([
+            (
+              ownerTypeName: 'NotificationHandler',
+              fields: [(name: 'center', typeName: 'UNUserNotificationCenter')],
+            ),
+          ], superclassTypeName: 'UNNotificationServiceExtension'),
+        );
+
+        expect(
+          report.swiftFields.single.superclassTypeName,
+          'UNNotificationServiceExtension',
+        );
+      },
+    );
+
     test('reads C strings from the file-backed parser', () async {
       final root = await Directory.systemTemp.createTemp('fal_macho_');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -1967,6 +1986,7 @@ List<int> thinMachOWithSwiftProtocolDescriptors(
 List<int> thinMachOWithSwiftFieldDescriptors(
   List<({String ownerTypeName, List<({String name, String typeName})> fields})>
   descriptors, {
+  String? superclassTypeName,
   int paddingBeforeData = 0,
 }) {
   final fieldmdAddress = 0x100000100;
@@ -1979,6 +1999,7 @@ List<int> thinMachOWithSwiftFieldDescriptors(
   final typeNames = [
     for (final descriptor in descriptors) ...[
       descriptor.ownerTypeName,
+      ?superclassTypeName,
       for (final field in descriptor.fields) field.typeName,
     ],
   ];
@@ -1995,9 +2016,17 @@ List<int> thinMachOWithSwiftFieldDescriptors(
     final ownerTypeNameAddress =
         typerefAddress + typeNameOffsets[typeNameIndex];
     typeNameIndex += 1;
+    final superclassTypeNameAddress = superclassTypeName == null
+        ? 0
+        : typerefAddress + typeNameOffsets[typeNameIndex];
+    if (superclassTypeName != null) typeNameIndex += 1;
     fieldmdData.addAll([
       ...u32(ownerTypeNameAddress - descriptorAddress),
-      ...u32(0), // superclass
+      ...u32(
+        superclassTypeNameAddress == 0
+            ? 0
+            : superclassTypeNameAddress - (descriptorAddress + 4),
+      ),
       ...u16(0), // kind
       ...u16(12), // field record size
       ...u32(descriptor.fields.length),

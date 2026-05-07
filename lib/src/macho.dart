@@ -296,6 +296,7 @@ class MachOSwiftField {
   const MachOSwiftField({
     required this.name,
     required this.ownerTypeName,
+    required this.superclassTypeName,
     required this.fieldTypeName,
     required this.sourceSection,
     required this.descriptorAddress,
@@ -303,6 +304,7 @@ class MachOSwiftField {
 
   final String name;
   final String? ownerTypeName;
+  final String? superclassTypeName;
   final String? fieldTypeName;
   final String sourceSection;
   final int descriptorAddress;
@@ -1595,7 +1597,7 @@ MachOReport _deduplicatedReport(
 
   final bySwiftField = <String, MachOSwiftField>{};
   for (final field in swiftFields) {
-    bySwiftField['${field.sourceSection}|${field.ownerTypeName}|${field.name}|${field.fieldTypeName}|${field.descriptorAddress}'] =
+    bySwiftField['${field.sourceSection}|${field.ownerTypeName}|${field.superclassTypeName}|${field.name}|${field.fieldTypeName}|${field.descriptorAddress}'] =
         field;
   }
 
@@ -2115,6 +2117,14 @@ List<MachOSwiftField> _readSwiftFieldsFromFile(
         pointerAddress: descriptorAddress,
         relativeOffset: _readI32(sectionBytes, offset),
       );
+      final superclassTypeName = _readRelativeSwiftStringFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        pointerAddress: descriptorAddress + 4,
+        relativeOffset: _readI32(sectionBytes, offset + 4),
+      );
       for (var i = 0; i < fieldCount; i += 1) {
         final recordOffset =
             offset + _swiftFieldDescriptorHeaderBytes + i * fieldRecordSize;
@@ -2141,6 +2151,7 @@ List<MachOSwiftField> _readSwiftFieldsFromFile(
           MachOSwiftField(
             name: fieldName,
             ownerTypeName: ownerTypeName,
+            superclassTypeName: superclassTypeName,
             fieldTypeName: fieldTypeName,
             sourceSection: section.displayName,
             descriptorAddress: descriptorAddress,
@@ -3073,6 +3084,12 @@ List<MachOSwiftField> _readSwiftFieldsFromBytes(
         pointerAddress: descriptorAddress,
         relativeOffset: _readI32(sectionBytes, offset),
       );
+      final superclassTypeName = _readRelativeSwiftStringFromBytes(
+        bytes,
+        allSections,
+        pointerAddress: descriptorAddress + 4,
+        relativeOffset: _readI32(sectionBytes, offset + 4),
+      );
       for (var i = 0; i < fieldCount; i += 1) {
         final recordOffset =
             offset + _swiftFieldDescriptorHeaderBytes + i * fieldRecordSize;
@@ -3095,6 +3112,7 @@ List<MachOSwiftField> _readSwiftFieldsFromBytes(
           MachOSwiftField(
             name: fieldName,
             ownerTypeName: ownerTypeName,
+            superclassTypeName: superclassTypeName,
             fieldTypeName: fieldTypeName,
             sourceSection: section.displayName,
             descriptorAddress: descriptorAddress,

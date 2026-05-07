@@ -202,6 +202,33 @@ void main() {
     },
   );
 
+  test('reports parsed Swift superclass sources for token evidence', () async {
+    final root = await Directory.systemTemp.createTemp('fal_evidence_');
+    addTearDown(() => root.deleteSync(recursive: true));
+
+    final appPath = '${root.path}/Runner.app';
+    final binary = File('$appPath/Runner')..createSync(recursive: true);
+    binary.writeAsBytesSync(
+      thinMachOWithSwiftFieldDescriptors([
+        (
+          ownerTypeName: 'NotificationHandler',
+          fields: [(name: 'center', typeName: 'UNUserNotificationCenter')],
+        ),
+      ], superclassTypeName: 'UNNotificationServiceExtension'),
+    );
+
+    final report = const IosEvidenceExtractor(
+      tokens: ['UNNotificationServiceExtension'],
+    ).collect(appPath);
+
+    expect(
+      report.sourcesFor([
+        'UNNotificationServiceExtension',
+      ])['UNNotificationServiceExtension'],
+      contains('${binary.path}#__TEXT.__swift5_fieldmd'),
+    );
+  });
+
   test(
     'reports parsed Mach-O symbol table sources for token evidence',
     () async {
@@ -699,8 +726,9 @@ List<int> thinMachOWithSwiftProtocolDescriptors(List<String> protocolNames) {
 
 List<int> thinMachOWithSwiftFieldDescriptors(
   List<({String ownerTypeName, List<({String name, String typeName})> fields})>
-  descriptors,
-) {
+  descriptors, {
+  String? superclassTypeName,
+}) {
   final fieldmdAddress = 0x100000100;
   final reflstrAddress = 0x100000800;
   final typerefAddress = 0x100001000;
@@ -711,6 +739,7 @@ List<int> thinMachOWithSwiftFieldDescriptors(
   final typeNames = [
     for (final descriptor in descriptors) ...[
       descriptor.ownerTypeName,
+      ?superclassTypeName,
       for (final field in descriptor.fields) field.typeName,
     ],
   ];
@@ -727,9 +756,17 @@ List<int> thinMachOWithSwiftFieldDescriptors(
     final ownerTypeNameAddress =
         typerefAddress + typeNameOffsets[typeNameIndex];
     typeNameIndex += 1;
+    final superclassTypeNameAddress = superclassTypeName == null
+        ? 0
+        : typerefAddress + typeNameOffsets[typeNameIndex];
+    if (superclassTypeName != null) typeNameIndex += 1;
     fieldmdData.addAll([
       ...u32(ownerTypeNameAddress - descriptorAddress),
-      ...u32(0),
+      ...u32(
+        superclassTypeNameAddress == 0
+            ? 0
+            : superclassTypeNameAddress - (descriptorAddress + 4),
+      ),
       ...u16(0),
       ...u16(12),
       ...u32(descriptor.fields.length),

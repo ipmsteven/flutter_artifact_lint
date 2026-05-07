@@ -291,6 +291,12 @@ class IosEvidenceExtractor {
             addEvidence(token, '${entity.path}#${field.sourceSection}');
           }
         }
+        final superclassTypeName = field.superclassTypeName;
+        if (superclassTypeName != null) {
+          for (final token in _matchedTokens(superclassTypeName, tokens)) {
+            addEvidence(token, '${entity.path}#${field.sourceSection}');
+          }
+        }
         final fieldTypeName = field.fieldTypeName;
         if (fieldTypeName != null) {
           for (final token in _matchedTokens(fieldTypeName, tokens)) {
