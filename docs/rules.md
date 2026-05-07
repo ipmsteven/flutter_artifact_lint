@@ -111,6 +111,9 @@ offset, size, and crypt id metadata.
 
 `ios.macho.entry_point` reports `LC_MAIN` entry offset and stack size metadata.
 
+`ios.macho.chained_fixups` reports `LC_DYLD_CHAINED_FIXUPS` header and starts
+metadata.
+
 `ios.signing.unavailable` reports that signing state is unavailable for an unsigned artifact.
 
 `ios.signing.present` reports that signing data appears to be present.

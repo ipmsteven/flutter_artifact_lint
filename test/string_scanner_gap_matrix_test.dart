@@ -161,6 +161,18 @@ void main() {
       expect(finding.message, contains('entry offset 4660'));
       expect(finding.message, contains('stack size 16384'));
     });
+
+    test('reports chained fixups starts metadata', () async {
+      final result = await _scanAppWithMainBinary(_machOWithChainedFixups());
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.chained_fixups',
+      );
+
+      expect(finding.message, contains('imports 0'));
+      expect(finding.message, contains('pointer format 9'));
+      expect(finding.message, contains('page size 16384'));
+    });
   });
 
   group('Mach-O architecture parser acceptance', () {
@@ -409,6 +421,49 @@ List<int> _machOMainCommand({
   ];
 }
 
+List<int> _machOWithChainedFixups() {
+  final chainedFixups = _chainedFixupsPayload();
+  final dataOffset = 32 + 16;
+  return [
+    ..._machOHeaderBytes(ncmds: 1, sizeofcmds: 16),
+    ..._u32(0x80000034),
+    ..._u32(16),
+    ..._u32(dataOffset),
+    ..._u32(chainedFixups.length),
+    ...chainedFixups,
+  ];
+}
+
+List<int> _chainedFixupsPayload() {
+  final starts = _chainedStartsInImagePayload();
+  const headerSize = 28;
+  final importsOffset = headerSize + starts.length;
+  return [
+    ..._u32(0),
+    ..._u32(headerSize),
+    ..._u32(importsOffset),
+    ..._u32(importsOffset),
+    ..._u32(0),
+    ..._u32(1),
+    ..._u32(0),
+    ...starts,
+  ];
+}
+
+List<int> _chainedStartsInImagePayload() {
+  const pageStarts = [0x18, 0xffff];
+  final segmentStarts = [
+    ..._u32(22 + pageStarts.length * 2),
+    ..._u16(0x4000),
+    ..._u16(9),
+    ..._u64(0x8000),
+    ..._u32(0),
+    ..._u16(pageStarts.length),
+    for (final pageStart in pageStarts) ..._u16(pageStart),
+  ];
+  return [..._u32(1), ..._u32(8), ...segmentStarts];
+}
+
 int _sourceVersion(int a, int b, int c, int d, int e) {
   return (a << 40) | (b << 30) | (c << 20) | (d << 10) | e;
 }
@@ -429,6 +484,10 @@ List<int> _u32be(int value) {
     (value >> 8) & 0xff,
     value & 0xff,
   ];
+}
+
+List<int> _u16(int value) {
+  return [value & 0xff, (value >> 8) & 0xff];
 }
 
 List<int> _u64(int value) {

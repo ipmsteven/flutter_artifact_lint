@@ -196,6 +196,14 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports LC_MAIN entry offset and stack size metadata.',
     fix: 'No action required.',
   ),
+  'ios.macho.chained_fixups': RuleDefinition(
+    ruleId: 'ios.macho.chained_fixups',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O chained fixups',
+    description: 'Reports LC_DYLD_CHAINED_FIXUPS header and starts metadata.',
+    fix: 'No action required.',
+  ),
   'ios.permission.camera.empty': RuleDefinition(
     ruleId: 'ios.permission.camera.empty',
     defaultLevel: FindingLevel.failed,

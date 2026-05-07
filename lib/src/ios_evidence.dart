@@ -64,6 +64,7 @@ enum MachOMetadataKind {
   codeSignature,
   encryptionInfo,
   entryPoint,
+  chainedFixups,
 }
 
 class MachOMetadataEvidence {
@@ -219,6 +220,18 @@ class IosEvidenceExtractor {
         );
       }
 
+      for (final chainedFixup in machoReport.chainedFixups) {
+        if (chainedFixup.fixupsVersion == null) continue;
+
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.chainedFixups,
+            sourcePath: entity.path,
+            value: _chainedFixupsValue(chainedFixup),
+          ),
+        );
+      }
+
       for (final sectionString in machoReport.sectionStrings) {
         for (final token in _matchedTokens(sectionString.value, tokens)) {
           addEvidence(token, '${entity.path}#${sectionString.sectionName}');
@@ -361,6 +374,20 @@ Iterable<String> _matchedTokens(String value, List<String> tokens) sync* {
   for (final token in tokens) {
     if (value.contains(token)) yield token;
   }
+}
+
+String _chainedFixupsValue(MachOChainedFixups chainedFixup) {
+  final segmentValues = [
+    for (final segment in chainedFixup.segments)
+      'pointer format ${segment.pointerFormat}, page size ${segment.pageSize}, segment offset ${segment.segmentOffset}, pages ${segment.pageStarts.length}',
+  ];
+  return [
+    'version ${chainedFixup.fixupsVersion}',
+    'imports ${chainedFixup.importsCount}',
+    'imports format ${chainedFixup.importsFormat}',
+    'symbols format ${chainedFixup.symbolsFormat}',
+    ...segmentValues,
+  ].join('; ');
 }
 
 int _textChunkSize(int maxBytesPerFile) {
