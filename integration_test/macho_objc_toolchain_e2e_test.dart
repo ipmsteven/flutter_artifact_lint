@@ -34,12 +34,19 @@ void main() {
 - (void)registerWithRegistrar:(id)registrar;
 @end
 
+@class CLLocationManager;
+
 __attribute__((objc_root_class))
 @interface RunnerViewController <FlutterPlugin>
+{
+  CLLocationManager *_locationManager;
+}
+@property(nonatomic, assign) CLLocationManager *locationManager;
 - (void)requestWhenInUseAuthorization;
 @end
 
 @implementation RunnerViewController
+@synthesize locationManager = _locationManager;
 - (void)requestWhenInUseAuthorization {}
 - (void)registerWithRegistrar:(id)registrar {}
 @end
@@ -85,6 +92,22 @@ int main(void) { return 0; }
           'requestWhenInUseAuthorization',
           'registerWithRegistrar:',
         ]),
+      );
+      expect(
+        report.objcIvars.map((ivar) => ivar.name),
+        contains('_locationManager'),
+      );
+      expect(
+        report.objcIvars.map((ivar) => ivar.typeEncoding),
+        contains(contains('CLLocationManager')),
+      );
+      expect(
+        report.objcProperties.map((property) => property.name),
+        contains('locationManager'),
+      );
+      expect(
+        report.objcProperties.map((property) => property.attributes),
+        contains(contains('CLLocationManager')),
       );
     },
     timeout: const Timeout(Duration(minutes: 3)),

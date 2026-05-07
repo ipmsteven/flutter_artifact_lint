@@ -276,6 +276,24 @@ class IosEvidenceExtractor {
         }
       }
 
+      for (final ivar in machoReport.objcIvars) {
+        for (final token in _matchedTokens(ivar.name, tokens)) {
+          addEvidence(token, '${entity.path}#${ivar.sourceSection}');
+        }
+        for (final token in _matchedTokens(ivar.typeEncoding, tokens)) {
+          addEvidence(token, '${entity.path}#${ivar.sourceSection}');
+        }
+      }
+
+      for (final property in machoReport.objcProperties) {
+        for (final token in _matchedTokens(property.name, tokens)) {
+          addEvidence(token, '${entity.path}#${property.sourceSection}');
+        }
+        for (final token in _matchedTokens(property.attributes, tokens)) {
+          addEvidence(token, '${entity.path}#${property.sourceSection}');
+        }
+      }
+
       for (final token in _scanTextTokens(
         entity,
         tokens,

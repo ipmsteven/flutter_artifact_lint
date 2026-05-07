@@ -394,6 +394,40 @@ void main() {
       );
     },
   );
+
+  test(
+    'reports parsed Objective-C ivar and property sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithObjCFieldMetadata(
+          className: 'RunnerViewController',
+          ivars: [
+            (name: '_locationManager', typeEncoding: r'@"CLLocationManager"'),
+          ],
+          properties: [
+            (
+              name: 'locationManager',
+              attributes: r'T@"CLLocationManager",N,V_locationManager',
+            ),
+          ],
+        ),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['CLLocationManager'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor(['CLLocationManager'])['CLLocationManager'],
+        contains('${binary.path}#__DATA_CONST.__objc_const'),
+      );
+    },
+  );
 }
 
 List<int> thinMachO(List<List<int>> commands) {
@@ -1138,6 +1172,149 @@ List<int> thinMachOWithObjCMethodList({
   ];
 }
 
+List<int> thinMachOWithObjCFieldMetadata({
+  required String className,
+  required List<({String name, String typeEncoding})> ivars,
+  required List<({String name, String attributes})> properties,
+}) {
+  final classNameAddress = 0x100000100;
+  final fieldNameAddress = 0x100000400;
+  final typeEncodingAddress = 0x100000800;
+  final classAddress = 0x100001000;
+  final classRoAddress = 0x100001800;
+  final classListAddress = 0x100002800;
+  final fieldNames = [
+    for (final ivar in ivars) ivar.name,
+    for (final property in properties) property.name,
+  ];
+  final typeEncodings = [
+    for (final ivar in ivars) ivar.typeEncoding,
+    for (final property in properties) property.attributes,
+  ];
+  final classNameData = cStringBytes([className]);
+  final fieldNameData = cStringBytes(fieldNames);
+  final typeEncodingData = cStringBytes(typeEncodings);
+  final fieldNameOffsets = stringOffsets(fieldNames);
+  final typeEncodingOffsets = stringOffsets(typeEncodings);
+  var fieldNameIndex = 0;
+  var typeEncodingIndex = 0;
+  final classData = objcClass64Bytes(classRoAddress);
+  final ivarListAddress = classRoAddress + 72;
+  final ivarListData = objcIvarList64Bytes([
+    for (final _ in ivars)
+      (
+        nameAddress: fieldNameAddress + fieldNameOffsets[fieldNameIndex++],
+        typeAddress:
+            typeEncodingAddress + typeEncodingOffsets[typeEncodingIndex++],
+      ),
+  ]);
+  final propertyListAddress = ivarListAddress + ivarListData.length;
+  final propertyListData = objcPropertyList64Bytes([
+    for (final _ in properties)
+      (
+        nameAddress: fieldNameAddress + fieldNameOffsets[fieldNameIndex++],
+        attributesAddress:
+            typeEncodingAddress + typeEncodingOffsets[typeEncodingIndex++],
+      ),
+  ]);
+  final classRoData = objcExtendedClassRo64Bytes(
+    classNameAddress,
+    ivarsAddress: ivarListAddress,
+    basePropertiesAddress: propertyListAddress,
+  );
+  final classListData = u64(classAddress);
+  final commandsSize = (72 + 3 * 80) + 3 * (72 + 80);
+  final classNameOffset = 32 + commandsSize;
+  final fieldNameOffset = classNameOffset + classNameData.length;
+  final typeEncodingOffset = fieldNameOffset + fieldNameData.length;
+  final classOffset = typeEncodingOffset + typeEncodingData.length;
+  final classRoOffset = classOffset + classData.length;
+  final classListOffset =
+      classRoOffset +
+      classRoData.length +
+      ivarListData.length +
+      propertyListData.length;
+
+  final textCommand = machoSegment64AddressCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: classNameAddress,
+      fileOffset: classNameOffset,
+      size: classNameData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: fieldNameAddress,
+      fileOffset: fieldNameOffset,
+      size: fieldNameData.length,
+    ),
+    (
+      name: '__objc_methtype',
+      segmentName: '__TEXT',
+      address: typeEncodingAddress,
+      fileOffset: typeEncodingOffset,
+      size: typeEncodingData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressCommand('__DATA', [
+    (
+      name: '__objc_data',
+      segmentName: '__DATA',
+      address: classAddress,
+      fileOffset: classOffset,
+      size: classData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: classRoAddress,
+      fileOffset: classRoOffset,
+      size: classRoData.length + ivarListData.length + propertyListData.length,
+    ),
+  ]);
+  final listCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: '__objc_classlist',
+      segmentName: '__DATA_CONST',
+      address: classListAddress,
+      fileOffset: classListOffset,
+      size: classListData.length,
+    ),
+  ]);
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(4),
+    ...u32(
+      textCommand.length +
+          dataCommand.length +
+          constCommand.length +
+          listCommand.length,
+    ),
+    ...u32(0),
+    ...u32(0),
+    ...textCommand,
+    ...dataCommand,
+    ...constCommand,
+    ...listCommand,
+    ...classNameData,
+    ...fieldNameData,
+    ...typeEncodingData,
+    ...classData,
+    ...classRoData,
+    ...ivarListData,
+    ...propertyListData,
+    ...classListData,
+  ];
+}
+
 List<int> machoSegment64Command(
   String segmentName,
   List<({String name, String segmentName, int fileOffset, int size})> sections,
@@ -1305,7 +1482,19 @@ List<int> objcClass64Bytes(int dataAddress) {
 }
 
 List<int> objcClassRo64Bytes(int nameAddress, {int baseMethodsAddress = 0}) {
-  return [
+  return objcExtendedClassRo64Bytes(
+    nameAddress,
+    baseMethodsAddress: baseMethodsAddress,
+  );
+}
+
+List<int> objcExtendedClassRo64Bytes(
+  int nameAddress, {
+  int baseMethodsAddress = 0,
+  int ivarsAddress = 0,
+  int basePropertiesAddress = 0,
+}) {
+  final bytes = [
     ...u32(0),
     ...u32(0),
     ...u32(0),
@@ -1314,6 +1503,14 @@ List<int> objcClassRo64Bytes(int nameAddress, {int baseMethodsAddress = 0}) {
     ...u64(nameAddress),
     ...u64(baseMethodsAddress),
   ];
+  if (ivarsAddress != 0 || basePropertiesAddress != 0) {
+    bytes
+      ..addAll(u64(0))
+      ..addAll(u64(ivarsAddress))
+      ..addAll(u64(0))
+      ..addAll(u64(basePropertiesAddress));
+  }
+  return bytes;
 }
 
 List<int> objcProtocol64Bytes(int nameAddress) {
@@ -1337,6 +1534,35 @@ List<int> objcMethodList64Bytes(List<int> methodNameAddresses) {
       ...u64(methodNameAddress),
       ...u64(0),
       ...u64(0),
+    ],
+  ];
+}
+
+List<int> objcIvarList64Bytes(
+  List<({int nameAddress, int typeAddress})> ivars,
+) {
+  return [
+    ...u32(32),
+    ...u32(ivars.length),
+    for (final ivar in ivars) ...[
+      ...u64(0),
+      ...u64(ivar.nameAddress),
+      ...u64(ivar.typeAddress),
+      ...u32(3),
+      ...u32(8),
+    ],
+  ];
+}
+
+List<int> objcPropertyList64Bytes(
+  List<({int nameAddress, int attributesAddress})> properties,
+) {
+  return [
+    ...u32(16),
+    ...u32(properties.length),
+    for (final property in properties) ...[
+      ...u64(property.nameAddress),
+      ...u64(property.attributesAddress),
     ],
   ];
 }

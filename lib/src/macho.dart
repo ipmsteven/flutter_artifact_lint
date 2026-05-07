@@ -29,6 +29,8 @@ class MachOReport {
     this.objcClasses = const [],
     this.objcProtocols = const [],
     this.objcMethods = const [],
+    this.objcIvars = const [],
+    this.objcProperties = const [],
   });
 
   final List<MachODylib> linkedDylibs;
@@ -57,6 +59,8 @@ class MachOReport {
   final List<MachOObjCClass> objcClasses;
   final List<MachOObjCProtocol> objcProtocols;
   final List<MachOObjCMethod> objcMethods;
+  final List<MachOObjCIvar> objcIvars;
+  final List<MachOObjCProperty> objcProperties;
 }
 
 class MachODylib {
@@ -280,6 +284,38 @@ class MachOObjCMethod {
   final int methodListAddress;
 }
 
+class MachOObjCIvar {
+  const MachOObjCIvar({
+    required this.name,
+    required this.typeEncoding,
+    required this.className,
+    required this.sourceSection,
+    required this.ivarListAddress,
+  });
+
+  final String name;
+  final String typeEncoding;
+  final String className;
+  final String sourceSection;
+  final int ivarListAddress;
+}
+
+class MachOObjCProperty {
+  const MachOObjCProperty({
+    required this.name,
+    required this.attributes,
+    required this.className,
+    required this.sourceSection,
+    required this.propertyListAddress,
+  });
+
+  final String name;
+  final String attributes;
+  final String className;
+  final String sourceSection;
+  final int propertyListAddress;
+}
+
 class MachOSymbolTable {
   const MachOSymbolTable({
     required this.symbolOffset,
@@ -433,6 +469,8 @@ class MachOParser {
       thinReport.objcClasses,
       thinReport.objcProtocols,
       thinReport.objcMethods,
+      thinReport.objcIvars,
+      thinReport.objcProperties,
     );
   }
 
@@ -489,6 +527,8 @@ class MachOParser {
     final objcClasses = <MachOObjCClass>[];
     final objcProtocols = <MachOObjCProtocol>[];
     final objcMethods = <MachOObjCMethod>[];
+    final objcIvars = <MachOObjCIvar>[];
+    final objcProperties = <MachOObjCProperty>[];
 
     for (
       var offset = 0;
@@ -534,6 +574,8 @@ class MachOParser {
       objcClasses.addAll(sliceReport.objcClasses);
       objcProtocols.addAll(sliceReport.objcProtocols);
       objcMethods.addAll(sliceReport.objcMethods);
+      objcIvars.addAll(sliceReport.objcIvars);
+      objcProperties.addAll(sliceReport.objcProperties);
     }
 
     return _deduplicatedReport(
@@ -563,6 +605,8 @@ class MachOParser {
       objcClasses,
       objcProtocols,
       objcMethods,
+      objcIvars,
+      objcProperties,
     );
   }
 
@@ -690,6 +734,20 @@ class MachOParser {
       is64Bit: thinIs64Bit,
       segments: report.segments,
     );
+    final objcIvars = _readObjCIvarsFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      is64Bit: thinIs64Bit,
+      segments: report.segments,
+    );
+    final objcProperties = _readObjCPropertiesFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      is64Bit: thinIs64Bit,
+      segments: report.segments,
+    );
     if (symbols.isEmpty &&
         dyldBindSymbols.isEmpty &&
         chainedFixupBindSymbols.isEmpty &&
@@ -702,7 +760,9 @@ class MachOParser {
         objcSelectors.isEmpty &&
         objcClasses.isEmpty &&
         objcProtocols.isEmpty &&
-        objcMethods.isEmpty) {
+        objcMethods.isEmpty &&
+        objcIvars.isEmpty &&
+        objcProperties.isEmpty) {
       return report;
     }
 
@@ -737,6 +797,8 @@ class MachOParser {
       [...report.objcClasses, ...objcClasses],
       [...report.objcProtocols, ...objcProtocols],
       [...report.objcMethods, ...objcMethods],
+      [...report.objcIvars, ...objcIvars],
+      [...report.objcProperties, ...objcProperties],
     );
   }
 
@@ -782,6 +844,8 @@ class MachOParser {
     final objcClasses = <MachOObjCClass>[];
     final objcProtocols = <MachOObjCProtocol>[];
     final objcMethods = <MachOObjCMethod>[];
+    final objcIvars = <MachOObjCIvar>[];
+    final objcProperties = <MachOObjCProperty>[];
 
     for (var i = 0; i < architectureCount; i += 1) {
       if (offset + archSize > bytes.length) break;
@@ -824,6 +888,8 @@ class MachOParser {
         objcClasses.addAll(sliceReport.objcClasses);
         objcProtocols.addAll(sliceReport.objcProtocols);
         objcMethods.addAll(sliceReport.objcMethods);
+        objcIvars.addAll(sliceReport.objcIvars);
+        objcProperties.addAll(sliceReport.objcProperties);
       }
 
       offset += archSize;
@@ -856,6 +922,8 @@ class MachOParser {
       objcClasses,
       objcProtocols,
       objcMethods,
+      objcIvars,
+      objcProperties,
     );
   }
 
@@ -1101,6 +1169,16 @@ class MachOParser {
       is64Bit: header.is64Bit,
       segments: segments,
     );
+    final objcIvars = _readObjCIvarsFromBytes(
+      bytes,
+      is64Bit: header.is64Bit,
+      segments: segments,
+    );
+    final objcProperties = _readObjCPropertiesFromBytes(
+      bytes,
+      is64Bit: header.is64Bit,
+      segments: segments,
+    );
 
     return MachOReport(
       linkedDylibs: linkedDylibs,
@@ -1129,6 +1207,8 @@ class MachOParser {
       objcClasses: objcClasses,
       objcProtocols: objcProtocols,
       objcMethods: objcMethods,
+      objcIvars: objcIvars,
+      objcProperties: objcProperties,
     );
   }
 }
@@ -1160,6 +1240,8 @@ MachOReport _deduplicatedReport(
   List<MachOObjCClass> objcClasses = const [],
   List<MachOObjCProtocol> objcProtocols = const [],
   List<MachOObjCMethod> objcMethods = const [],
+  List<MachOObjCIvar> objcIvars = const [],
+  List<MachOObjCProperty> objcProperties = const [],
 ]) {
   final byPath = <String, MachODylib>{};
   for (final dylib in dylibs) {
@@ -1320,6 +1402,18 @@ MachOReport _deduplicatedReport(
         objcMethod;
   }
 
+  final byObjCIvar = <String, MachOObjCIvar>{};
+  for (final ivar in objcIvars) {
+    byObjCIvar['${ivar.className}|${ivar.sourceSection}|${ivar.name}|${ivar.typeEncoding}|${ivar.ivarListAddress}'] =
+        ivar;
+  }
+
+  final byObjCProperty = <String, MachOObjCProperty>{};
+  for (final property in objcProperties) {
+    byObjCProperty['${property.className}|${property.sourceSection}|${property.name}|${property.attributes}|${property.propertyListAddress}'] =
+        property;
+  }
+
   return MachOReport(
     linkedDylibs: byPath.values.toList(),
     architectures: byArchitecture.values.toList(),
@@ -1350,6 +1444,8 @@ MachOReport _deduplicatedReport(
     objcClasses: byObjCClass.values.toList(),
     objcProtocols: byObjCProtocol.values.toList(),
     objcMethods: byObjCMethod.values.toList(),
+    objcIvars: byObjCIvar.values.toList(),
+    objcProperties: byObjCProperty.values.toList(),
   );
 }
 
@@ -1384,12 +1480,16 @@ class _ObjCClassMetadata {
     required this.classRoAddress,
     required this.baseMethodsAddress,
     required this.protocolsAddress,
+    required this.ivarsAddress,
+    required this.basePropertiesAddress,
   });
 
   final String name;
   final int classRoAddress;
   final int baseMethodsAddress;
   final int protocolsAddress;
+  final int ivarsAddress;
+  final int basePropertiesAddress;
 }
 
 class _ObjCCategoryMetadata {
@@ -2134,6 +2234,126 @@ List<MachOObjCMethod> _readObjCMethodsFromFile(
   return methods;
 }
 
+List<MachOObjCIvar> _readObjCIvarsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSegment> segments,
+}) {
+  final ivars = <MachOObjCIvar>[];
+  final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
+  final stringSections = _stringSections(segments).toList();
+
+  for (final section in _objcClassReferenceSections(segments)) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    final sectionBytes = _readRange(
+      raf,
+      fileOffset + section.fileOffset,
+      section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final classAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
+      final metadata = _readObjCClassMetadataFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        classAddress: classAddress,
+      );
+      if (metadata == null || metadata.ivarsAddress == 0) continue;
+
+      ivars.addAll(
+        _readObjCIvarListFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          className: metadata.name,
+          ivarListAddress: metadata.ivarsAddress,
+        ),
+      );
+    }
+  }
+
+  return ivars;
+}
+
+List<MachOObjCProperty> _readObjCPropertiesFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSegment> segments,
+}) {
+  final properties = <MachOObjCProperty>[];
+  final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
+  final stringSections = _stringSections(segments).toList();
+
+  for (final section in _objcClassReferenceSections(segments)) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    final sectionBytes = _readRange(
+      raf,
+      fileOffset + section.fileOffset,
+      section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final classAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
+      final metadata = _readObjCClassMetadataFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        classAddress: classAddress,
+      );
+      if (metadata == null || metadata.basePropertiesAddress == 0) continue;
+
+      properties.addAll(
+        _readObjCPropertyListFromFile(
+          raf,
+          fileOffset,
+          availableLength,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          className: metadata.name,
+          propertyListAddress: metadata.basePropertiesAddress,
+        ),
+      );
+    }
+  }
+
+  return properties;
+}
+
 List<MachOSectionString> _readSectionStringsFromBytes(
   List<int> bytes, {
   required List<MachOSegment> segments,
@@ -2426,6 +2646,112 @@ List<MachOObjCMethod> _readObjCMethodsFromBytes(
   }
 
   return methods;
+}
+
+List<MachOObjCIvar> _readObjCIvarsFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSegment> segments,
+}) {
+  final ivars = <MachOObjCIvar>[];
+  final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
+  final stringSections = _stringSections(segments).toList();
+
+  for (final section in _objcClassReferenceSections(segments)) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    final sectionBytes = bytes.sublist(
+      section.fileOffset,
+      section.fileOffset + section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final classAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
+      final metadata = _readObjCClassMetadataFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        classAddress: classAddress,
+      );
+      if (metadata == null || metadata.ivarsAddress == 0) continue;
+
+      ivars.addAll(
+        _readObjCIvarListFromBytes(
+          bytes,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          className: metadata.name,
+          ivarListAddress: metadata.ivarsAddress,
+        ),
+      );
+    }
+  }
+
+  return ivars;
+}
+
+List<MachOObjCProperty> _readObjCPropertiesFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSegment> segments,
+}) {
+  final properties = <MachOObjCProperty>[];
+  final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
+  final stringSections = _stringSections(segments).toList();
+
+  for (final section in _objcClassReferenceSections(segments)) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    final sectionBytes = bytes.sublist(
+      section.fileOffset,
+      section.fileOffset + section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final classAddress = _readPointerValue(
+        sectionBytes,
+        offset,
+        allSections,
+        is64Bit: is64Bit,
+      );
+      final metadata = _readObjCClassMetadataFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        classAddress: classAddress,
+      );
+      if (metadata == null || metadata.basePropertiesAddress == 0) continue;
+
+      properties.addAll(
+        _readObjCPropertyListFromBytes(
+          bytes,
+          is64Bit: is64Bit,
+          allSections: allSections,
+          stringSections: stringSections,
+          className: metadata.name,
+          propertyListAddress: metadata.basePropertiesAddress,
+        ),
+      );
+    }
+  }
+
+  return properties;
 }
 
 List<MachOObjCClass> _readObjCClassesFromBytes(
@@ -2733,12 +3059,34 @@ _ObjCClassMetadata? _readObjCClassMetadataFromFile(
         is64Bit: is64Bit,
       ) ??
       0;
+  final ivarsAddress =
+      _readPointerAtAddressFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        classRoAddress + (is64Bit ? 48 : 28),
+        is64Bit: is64Bit,
+      ) ??
+      0;
+  final basePropertiesAddress =
+      _readPointerAtAddressFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        classRoAddress + (is64Bit ? 64 : 36),
+        is64Bit: is64Bit,
+      ) ??
+      0;
 
   return _ObjCClassMetadata(
     name: name,
     classRoAddress: classRoAddress,
     baseMethodsAddress: baseMethodsAddress,
     protocolsAddress: protocolsAddress,
+    ivarsAddress: ivarsAddress,
+    basePropertiesAddress: basePropertiesAddress,
   );
 }
 
@@ -2924,6 +3272,314 @@ List<MachOObjCProtocol> _readObjCProtocolListFromBytes(
   return protocols;
 }
 
+List<MachOObjCIvar> _readObjCIvarListFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required String className,
+  required int ivarListAddress,
+}) {
+  final section = _sectionContainingAddress(allSections, ivarListAddress);
+  if (section == null || !_canReadSection(section, availableLength)) {
+    return const [];
+  }
+
+  final header = _readBytesAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    ivarListAddress,
+    8,
+  );
+  if (header == null) return const [];
+
+  final pointerSize = is64Bit ? 8 : 4;
+  final entrySize = _readU32(header, 0);
+  final entryCount = _readU32(header, 4);
+  if (!_canReadObjCIvarList(pointerSize, entrySize, entryCount)) {
+    return const [];
+  }
+
+  final ivars = <MachOObjCIvar>[];
+  for (var i = 0; i < entryCount; i += 1) {
+    final entryAddress = ivarListAddress + 8 + i * entrySize;
+    final nameAddress = _readPointerAtAddressFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      allSections,
+      entryAddress + pointerSize,
+      is64Bit: is64Bit,
+    );
+    final typeAddress = _readPointerAtAddressFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      allSections,
+      entryAddress + 2 * pointerSize,
+      is64Bit: is64Bit,
+    );
+    if (nameAddress == null || typeAddress == null) continue;
+
+    final name = _readCStringAtAddressFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      stringSections,
+      nameAddress,
+    );
+    final typeEncoding = _readCStringAtAddressFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      stringSections,
+      typeAddress,
+    );
+    if (name == null || typeEncoding == null) continue;
+
+    ivars.add(
+      MachOObjCIvar(
+        name: name,
+        typeEncoding: typeEncoding,
+        className: className,
+        sourceSection: section.displayName,
+        ivarListAddress: ivarListAddress,
+      ),
+    );
+  }
+
+  return ivars;
+}
+
+List<MachOObjCIvar> _readObjCIvarListFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required String className,
+  required int ivarListAddress,
+}) {
+  final section = _sectionContainingAddress(allSections, ivarListAddress);
+  if (section == null || !_canReadSection(section, bytes.length)) {
+    return const [];
+  }
+
+  final header = _readBytesAtAddressFromBytes(
+    bytes,
+    allSections,
+    ivarListAddress,
+    8,
+  );
+  if (header == null) return const [];
+
+  final pointerSize = is64Bit ? 8 : 4;
+  final entrySize = _readU32(header, 0);
+  final entryCount = _readU32(header, 4);
+  if (!_canReadObjCIvarList(pointerSize, entrySize, entryCount)) {
+    return const [];
+  }
+
+  final ivars = <MachOObjCIvar>[];
+  for (var i = 0; i < entryCount; i += 1) {
+    final entryAddress = ivarListAddress + 8 + i * entrySize;
+    final nameAddress = _readPointerAtAddressFromBytes(
+      bytes,
+      allSections,
+      entryAddress + pointerSize,
+      is64Bit: is64Bit,
+    );
+    final typeAddress = _readPointerAtAddressFromBytes(
+      bytes,
+      allSections,
+      entryAddress + 2 * pointerSize,
+      is64Bit: is64Bit,
+    );
+    if (nameAddress == null || typeAddress == null) continue;
+
+    final name = _readCStringAtAddressFromBytes(
+      bytes,
+      stringSections,
+      nameAddress,
+    );
+    final typeEncoding = _readCStringAtAddressFromBytes(
+      bytes,
+      stringSections,
+      typeAddress,
+    );
+    if (name == null || typeEncoding == null) continue;
+
+    ivars.add(
+      MachOObjCIvar(
+        name: name,
+        typeEncoding: typeEncoding,
+        className: className,
+        sourceSection: section.displayName,
+        ivarListAddress: ivarListAddress,
+      ),
+    );
+  }
+
+  return ivars;
+}
+
+List<MachOObjCProperty> _readObjCPropertyListFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required String className,
+  required int propertyListAddress,
+}) {
+  final section = _sectionContainingAddress(allSections, propertyListAddress);
+  if (section == null || !_canReadSection(section, availableLength)) {
+    return const [];
+  }
+
+  final header = _readBytesAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    propertyListAddress,
+    8,
+  );
+  if (header == null) return const [];
+
+  final pointerSize = is64Bit ? 8 : 4;
+  final entrySize = _readU32(header, 0);
+  final entryCount = _readU32(header, 4);
+  if (!_canReadObjCPropertyList(pointerSize, entrySize, entryCount)) {
+    return const [];
+  }
+
+  final properties = <MachOObjCProperty>[];
+  for (var i = 0; i < entryCount; i += 1) {
+    final entryAddress = propertyListAddress + 8 + i * entrySize;
+    final nameAddress = _readPointerAtAddressFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      allSections,
+      entryAddress,
+      is64Bit: is64Bit,
+    );
+    final attributesAddress = _readPointerAtAddressFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      allSections,
+      entryAddress + pointerSize,
+      is64Bit: is64Bit,
+    );
+    if (nameAddress == null || attributesAddress == null) continue;
+
+    final name = _readCStringAtAddressFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      stringSections,
+      nameAddress,
+    );
+    final attributes = _readCStringAtAddressFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      stringSections,
+      attributesAddress,
+    );
+    if (name == null || attributes == null) continue;
+
+    properties.add(
+      MachOObjCProperty(
+        name: name,
+        attributes: attributes,
+        className: className,
+        sourceSection: section.displayName,
+        propertyListAddress: propertyListAddress,
+      ),
+    );
+  }
+
+  return properties;
+}
+
+List<MachOObjCProperty> _readObjCPropertyListFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required String className,
+  required int propertyListAddress,
+}) {
+  final section = _sectionContainingAddress(allSections, propertyListAddress);
+  if (section == null || !_canReadSection(section, bytes.length)) {
+    return const [];
+  }
+
+  final header = _readBytesAtAddressFromBytes(
+    bytes,
+    allSections,
+    propertyListAddress,
+    8,
+  );
+  if (header == null) return const [];
+
+  final pointerSize = is64Bit ? 8 : 4;
+  final entrySize = _readU32(header, 0);
+  final entryCount = _readU32(header, 4);
+  if (!_canReadObjCPropertyList(pointerSize, entrySize, entryCount)) {
+    return const [];
+  }
+
+  final properties = <MachOObjCProperty>[];
+  for (var i = 0; i < entryCount; i += 1) {
+    final entryAddress = propertyListAddress + 8 + i * entrySize;
+    final nameAddress = _readPointerAtAddressFromBytes(
+      bytes,
+      allSections,
+      entryAddress,
+      is64Bit: is64Bit,
+    );
+    final attributesAddress = _readPointerAtAddressFromBytes(
+      bytes,
+      allSections,
+      entryAddress + pointerSize,
+      is64Bit: is64Bit,
+    );
+    if (nameAddress == null || attributesAddress == null) continue;
+
+    final name = _readCStringAtAddressFromBytes(
+      bytes,
+      stringSections,
+      nameAddress,
+    );
+    final attributes = _readCStringAtAddressFromBytes(
+      bytes,
+      stringSections,
+      attributesAddress,
+    );
+    if (name == null || attributes == null) continue;
+
+    properties.add(
+      MachOObjCProperty(
+        name: name,
+        attributes: attributes,
+        className: className,
+        sourceSection: section.displayName,
+        propertyListAddress: propertyListAddress,
+      ),
+    );
+  }
+
+  return properties;
+}
+
 _ObjCClassMetadata? _readObjCClassMetadataFromBytes(
   List<int> bytes, {
   required bool is64Bit,
@@ -2971,12 +3627,30 @@ _ObjCClassMetadata? _readObjCClassMetadataFromBytes(
         is64Bit: is64Bit,
       ) ??
       0;
+  final ivarsAddress =
+      _readPointerAtAddressFromBytes(
+        bytes,
+        allSections,
+        classRoAddress + (is64Bit ? 48 : 28),
+        is64Bit: is64Bit,
+      ) ??
+      0;
+  final basePropertiesAddress =
+      _readPointerAtAddressFromBytes(
+        bytes,
+        allSections,
+        classRoAddress + (is64Bit ? 64 : 36),
+        is64Bit: is64Bit,
+      ) ??
+      0;
 
   return _ObjCClassMetadata(
     name: name,
     classRoAddress: classRoAddress,
     baseMethodsAddress: baseMethodsAddress,
     protocolsAddress: protocolsAddress,
+    ivarsAddress: ivarsAddress,
+    basePropertiesAddress: basePropertiesAddress,
   );
 }
 
@@ -4210,6 +4884,30 @@ bool _canReadObjCProtocolList(int pointerSize, int protocolCount) {
   return byteLength > 0 && byteLength <= _maxObjCProtocolListBytes;
 }
 
+bool _canReadObjCIvarList(int pointerSize, int entrySize, int entryCount) {
+  if ((pointerSize != 4 && pointerSize != 8) ||
+      entrySize < pointerSize * 3 + 8 ||
+      entryCount <= 0 ||
+      entryCount > _maxObjCIvarCount) {
+    return false;
+  }
+
+  final byteLength = 8 + entrySize * entryCount;
+  return byteLength > 0 && byteLength <= _maxObjCIvarListBytes;
+}
+
+bool _canReadObjCPropertyList(int pointerSize, int entrySize, int entryCount) {
+  if ((pointerSize != 4 && pointerSize != 8) ||
+      entrySize < pointerSize * 2 ||
+      entryCount <= 0 ||
+      entryCount > _maxObjCPropertyCount) {
+    return false;
+  }
+
+  final byteLength = 8 + entrySize * entryCount;
+  return byteLength > 0 && byteLength <= _maxObjCPropertyListBytes;
+}
+
 List<MachODyldBindSymbol> _readDyldBindSymbolsFromFile(
   RandomAccessFile raf,
   int fileOffset,
@@ -4984,6 +5682,10 @@ const _maxObjCMethodCount = 8192;
 const _maxObjCMethodListBytes = 2 * 1024 * 1024;
 const _maxObjCProtocolCount = 8192;
 const _maxObjCProtocolListBytes = 2 * 1024 * 1024;
+const _maxObjCIvarCount = 8192;
+const _maxObjCIvarListBytes = 2 * 1024 * 1024;
+const _maxObjCPropertyCount = 8192;
+const _maxObjCPropertyListBytes = 2 * 1024 * 1024;
 const _maxSectionStringBytes = 4 * 1024 * 1024;
 const _maxStringTableBytes = 16 * 1024 * 1024;
 const _maxSymbolTableBytes = 16 * 1024 * 1024;
