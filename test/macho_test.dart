@@ -518,6 +518,16 @@ void main() {
       expect(report.dataInCode.single.entries.last.kindName, 'jump table 32');
     });
 
+    test('reads LC_LINKER_OPTION strings from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoLinkerOptionCommand(['-framework', 'Contacts']),
+        ]),
+      );
+
+      expect(report.linkerOptions.single.values, ['-framework', 'Contacts']);
+    });
+
     test('reads LC_DATA_IN_CODE entries from the file-backed parser', () {
       final root = Directory.systemTemp.createTempSync('fal_macho_');
       addTearDown(() => root.deleteSync(recursive: true));
@@ -533,6 +543,25 @@ void main() {
 
       expect(report.dataInCode.single.entries.single.offset, 0x40);
       expect(report.dataInCode.single.entries.single.kindName, 'jump table 8');
+    });
+
+    test('reads LC_LINKER_OPTION strings from the file-backed parser', () {
+      final root = Directory.systemTemp.createTempSync('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(
+          thinMachO([
+            machoLinkerOptionCommand(['-framework', 'UserNotifications']),
+          ]),
+        );
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(report.linkerOptions.single.values, [
+        '-framework',
+        'UserNotifications',
+      ]);
     });
 
     test(
@@ -4241,6 +4270,20 @@ List<int> machoDataInCodeCommand({
   return [...u32(0x29), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
 }
 
+List<int> machoLinkerOptionCommand(List<String> values) {
+  final strings = [
+    for (final value in values) ...[...latin1.encode(value), 0],
+  ];
+  final commandSize = _alignTo(12 + strings.length, 8);
+  return [
+    ...u32(0x2d),
+    ...u32(commandSize),
+    ...u32(values.length),
+    ...strings,
+    ...List.filled(commandSize - 12 - strings.length, 0),
+  ];
+}
+
 List<int> dyldBindInfoBytes(List<String> symbols) {
   return [
     for (final symbol in symbols) ...[0x40, ...latin1.encode(symbol), 0, 0x90],
@@ -4824,6 +4867,11 @@ List<int> fatMachO(List<List<int>> slices, {bool fat64 = false}) {
 
 int sourceVersion(int a, int b, int c, int d, int e) {
   return (a << 40) | (b << 30) | (c << 20) | (d << 10) | e;
+}
+
+int _alignTo(int value, int alignment) {
+  final remainder = value % alignment;
+  return remainder == 0 ? value : value + alignment - remainder;
 }
 
 List<int> fixedString(String value, int length) {

@@ -61,6 +61,7 @@ enum MachOMetadataKind {
   dylibId,
   uuid,
   sourceVersion,
+  linkerOption,
   codeSignature,
   encryptionInfo,
   entryPoint,
@@ -185,6 +186,16 @@ class IosEvidenceExtractor {
             kind: MachOMetadataKind.sourceVersion,
             sourcePath: entity.path,
             value: sourceVersion.version,
+          ),
+        );
+      }
+
+      for (final linkerOption in machoReport.linkerOptions) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.linkerOption,
+            sourcePath: entity.path,
+            value: linkerOption.values.join(' '),
           ),
         );
       }

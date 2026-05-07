@@ -171,6 +171,14 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports source version metadata from LC_SOURCE_VERSION.',
     fix: 'No action required.',
   ),
+  'ios.macho.linker_option': RuleDefinition(
+    ruleId: 'ios.macho.linker_option',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O linker option',
+    description: 'Reports linker option strings from LC_LINKER_OPTION.',
+    fix: 'No action required.',
+  ),
   'ios.macho.code_signature': RuleDefinition(
     ruleId: 'ios.macho.code_signature',
     defaultLevel: FindingLevel.info,

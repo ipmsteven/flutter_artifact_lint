@@ -104,6 +104,8 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 
 `ios.macho.source_version` reports source version metadata from `LC_SOURCE_VERSION`.
 
+`ios.macho.linker_option` reports linker option strings from `LC_LINKER_OPTION`.
+
 `ios.macho.code_signature` reports `LC_CODE_SIGNATURE` offset and size metadata.
 
 `ios.macho.encryption_info` reports `LC_ENCRYPTION_INFO` FairPlay encryption
@@ -141,7 +143,7 @@ The scanner warns when device release artifacts contain simulator architecture
 or simulator platform metadata.
 
 Additional diagnostic metadata is parsed from `LC_RPATH`, `LC_ID_DYLIB`,
-`LC_UUID`, `LC_SOURCE_VERSION`, `LC_CODE_SIGNATURE`, and
+`LC_UUID`, `LC_SOURCE_VERSION`, `LC_LINKER_OPTION`, `LC_CODE_SIGNATURE`, and
 `LC_ENCRYPTION_INFO`, and `LC_MAIN`. `LC_CODE_SIGNATURE` currently reports only
 the linkedit offset and size; it does not validate the signature blob or parse
 embedded entitlements. `LC_ENCRYPTION_INFO` reports FairPlay encryption offsets

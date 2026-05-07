@@ -204,6 +204,21 @@ void main() {
       expect(finding.message, contains('data'));
       expect(finding.message, contains('jump table 32'));
     });
+
+    test('reports linker option metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([
+          _machOLinkerOptionCommand(['-framework', 'Contacts']),
+        ]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.linker_option',
+      );
+
+      expect(finding.message, contains('-framework'));
+      expect(finding.message, contains('Contacts'));
+    });
   });
 
   group('Mach-O architecture parser acceptance', () {
@@ -426,6 +441,20 @@ List<int> _machOCodeSignatureCommand({
   return [..._u32(0x1d), ..._u32(16), ..._u32(dataOffset), ..._u32(dataSize)];
 }
 
+List<int> _machOLinkerOptionCommand(List<String> values) {
+  final strings = [
+    for (final value in values) ...[...latin1.encode(value), 0],
+  ];
+  final commandSize = _alignTo(12 + strings.length, 8);
+  return [
+    ..._u32(0x2d),
+    ..._u32(commandSize),
+    ..._u32(values.length),
+    ...strings,
+    ...List.filled(commandSize - 12 - strings.length, 0),
+  ];
+}
+
 List<int> _machOEncryptionInfoCommand({
   required int cryptOffset,
   required int cryptSize,
@@ -546,6 +575,11 @@ List<int> _chainedStartsInImagePayload() {
 
 int _sourceVersion(int a, int b, int c, int d, int e) {
   return (a << 40) | (b << 30) | (c << 20) | (d << 10) | e;
+}
+
+int _alignTo(int value, int alignment) {
+  final remainder = value % alignment;
+  return remainder == 0 ? value : value + alignment - remainder;
 }
 
 List<int> _u32(int value) {
