@@ -66,6 +66,10 @@ required reason API traces without matching `PrivacyInfo.xcprivacy` categories,
 whether signing data is available. Unsigned Flutter `.app` outputs cannot prove
 final codesign, provisioning profile, or push entitlement state.
 
+App extensions under `PlugIns/*.appex` are scanned as their own bundles for
+permission-purpose checks, so extension evidence is evaluated against the
+extension `Info.plist` instead of the main app `Info.plist`.
+
 All emitted rule IDs are documented in [`docs/rules.md`](docs/rules.md).
 
 ## Baseline

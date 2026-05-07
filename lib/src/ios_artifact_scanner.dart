@@ -13,6 +13,7 @@ class IosArtifactScanner {
     final findings = <LintFinding>[];
     final infoPlistPath = p.join(artifact.appPath, 'Info.plist');
     Map<String, Object?> infoPlist = {};
+    var parsedInfoPlist = false;
 
     if (!File(infoPlistPath).existsSync()) {
       findings.add(
@@ -28,6 +29,7 @@ class IosArtifactScanner {
     } else {
       try {
         infoPlist = parsePlistFile(infoPlistPath);
+        parsedInfoPlist = true;
       } on PlistParseException catch (error) {
         findings.add(
           LintFinding(
@@ -45,10 +47,22 @@ class IosArtifactScanner {
 
     findings
       ..addAll(_bundleInfo(infoPlist, artifact))
-      ..addAll(_deterministicPlistRules(infoPlist, infoPlistPath))
+      ..addAll(
+        parsedInfoPlist
+            ? _deterministicPlistRules(infoPlist, infoPlistPath)
+            : const [],
+      )
       ..addAll(_nestedBundleRules(artifact.appPath))
       ..addAll(_privacyManifestRules(artifact.appPath))
-      ..addAll(_binaryEvidenceRules(artifact.appPath, infoPlist))
+      ..addAll(
+        _binaryEvidenceRules(
+          artifact.appPath,
+          infoPlist,
+          infoPlistPath: infoPlistPath,
+          canCheckMissingPermissions: parsedInfoPlist,
+          excludeNestedAppExtensions: true,
+        ),
+      )
       ..add(_signingInfo(artifact));
 
     assert(_findingsAreRegistered(findings));
@@ -316,7 +330,15 @@ List<LintFinding> _nestedBundleRules(String appPath) {
           ),
         )
         ..addAll(_permissionPurposeStringRules(plist, infoPlistPath))
-        ..addAll(_atsRules(plist, infoPlistPath));
+        ..addAll(_atsRules(plist, infoPlistPath))
+        ..addAll(
+          _binaryEvidenceRules(
+            bundle.path,
+            plist,
+            infoPlistPath: infoPlistPath,
+            canCheckMissingPermissions: true,
+          ),
+        );
     } on PlistParseException catch (error) {
       findings.add(
         LintFinding(
@@ -420,12 +442,18 @@ List<LintFinding> _privacyManifestRules(String appPath) {
 
 List<LintFinding> _binaryEvidenceRules(
   String appPath,
-  Map<String, Object?> plist,
-) {
+  Map<String, Object?> plist, {
+  required String infoPlistPath,
+  required bool canCheckMissingPermissions,
+  bool excludeNestedAppExtensions = false,
+}) {
   final evidence = const IosEvidenceExtractor(
     tokens: _evidenceTokens,
-  ).collect(appPath);
-  final declaredPrivacyCategories = _declaredPrivacyCategories(appPath);
+  ).collect(appPath, excludeNestedAppExtensions: excludeNestedAppExtensions);
+  final declaredPrivacyCategories = _declaredPrivacyCategories(
+    appPath,
+    excludeNestedAppExtensions: excludeNestedAppExtensions,
+  );
   final findings = <LintFinding>[];
 
   void warnMissingPermission({
@@ -447,87 +475,90 @@ List<LintFinding> _binaryEvidenceRules(
             '${matched.join(' / ')} detected, but ${plistKeys.join(' or ')} is missing.',
         fix:
             'Add the matching usage description if this capability is reachable in the release app.',
+        path: infoPlistPath,
         evidence: matched,
       ),
     );
   }
 
-  warnMissingPermission(
-    ruleId: 'ios.permission.contacts.missing',
-    title: 'Contacts API evidence found',
-    plistKeys: ['NSContactsUsageDescription'],
-    tokens: [
-      'Contacts.framework',
-      'CNContactStore',
-      'CNContactPickerViewController',
-    ],
-  );
-  warnMissingPermission(
-    ruleId: 'ios.permission.camera.missing',
-    title: 'Camera API evidence found',
-    plistKeys: ['NSCameraUsageDescription'],
-    tokens: [
-      'AVCaptureSession',
-      'AVCaptureDevice',
-      'DataScannerViewController',
-    ],
-  );
-  warnMissingPermission(
-    ruleId: 'ios.permission.microphone.missing',
-    title: 'Microphone API evidence found',
-    plistKeys: ['NSMicrophoneUsageDescription'],
-    tokens: ['AVAudioRecorder', 'AVAudioEngine', 'SFSpeechRecognizer'],
-  );
-  warnMissingPermission(
-    ruleId: 'ios.permission.location.missing',
-    title: 'Location API evidence found',
-    plistKeys: [
-      'NSLocationWhenInUseUsageDescription',
-      'NSLocationAlwaysAndWhenInUseUsageDescription',
-      'NSLocationAlwaysUsageDescription',
-    ],
-    tokens: [
-      'CoreLocation.framework',
-      'CLLocationManager',
-      'requestWhenInUseAuthorization',
-      'requestAlwaysAuthorization',
-    ],
-  );
-  warnMissingPermission(
-    ruleId: 'ios.permission.photos.missing',
-    title: 'Photo library API evidence found',
-    plistKeys: [
-      'NSPhotoLibraryUsageDescription',
-      'NSPhotoLibraryAddUsageDescription',
-    ],
-    tokens: [
-      'Photos.framework',
-      'PhotosUI.framework',
-      'PHPhotoLibrary',
-      'PHPickerViewController',
-      'UIImagePickerController',
-    ],
-  );
-  warnMissingPermission(
-    ruleId: 'ios.permission.bluetooth.missing',
-    title: 'Bluetooth API evidence found',
-    plistKeys: ['NSBluetoothAlwaysUsageDescription'],
-    tokens: [
-      'CoreBluetooth.framework',
-      'CBCentralManager',
-      'CBPeripheralManager',
-    ],
-  );
-  warnMissingPermission(
-    ruleId: 'ios.permission.face_id.missing',
-    title: 'Face ID API evidence found',
-    plistKeys: ['NSFaceIDUsageDescription'],
-    tokens: [
-      'LocalAuthentication.framework',
-      'LAContext',
-      'deviceOwnerAuthenticationWithBiometrics',
-    ],
-  );
+  if (canCheckMissingPermissions) {
+    warnMissingPermission(
+      ruleId: 'ios.permission.contacts.missing',
+      title: 'Contacts API evidence found',
+      plistKeys: ['NSContactsUsageDescription'],
+      tokens: [
+        'Contacts.framework',
+        'CNContactStore',
+        'CNContactPickerViewController',
+      ],
+    );
+    warnMissingPermission(
+      ruleId: 'ios.permission.camera.missing',
+      title: 'Camera API evidence found',
+      plistKeys: ['NSCameraUsageDescription'],
+      tokens: [
+        'AVCaptureSession',
+        'AVCaptureDevice',
+        'DataScannerViewController',
+      ],
+    );
+    warnMissingPermission(
+      ruleId: 'ios.permission.microphone.missing',
+      title: 'Microphone API evidence found',
+      plistKeys: ['NSMicrophoneUsageDescription'],
+      tokens: ['AVAudioRecorder', 'AVAudioEngine', 'SFSpeechRecognizer'],
+    );
+    warnMissingPermission(
+      ruleId: 'ios.permission.location.missing',
+      title: 'Location API evidence found',
+      plistKeys: [
+        'NSLocationWhenInUseUsageDescription',
+        'NSLocationAlwaysAndWhenInUseUsageDescription',
+        'NSLocationAlwaysUsageDescription',
+      ],
+      tokens: [
+        'CoreLocation.framework',
+        'CLLocationManager',
+        'requestWhenInUseAuthorization',
+        'requestAlwaysAuthorization',
+      ],
+    );
+    warnMissingPermission(
+      ruleId: 'ios.permission.photos.missing',
+      title: 'Photo library API evidence found',
+      plistKeys: [
+        'NSPhotoLibraryUsageDescription',
+        'NSPhotoLibraryAddUsageDescription',
+      ],
+      tokens: [
+        'Photos.framework',
+        'PhotosUI.framework',
+        'PHPhotoLibrary',
+        'PHPickerViewController',
+        'UIImagePickerController',
+      ],
+    );
+    warnMissingPermission(
+      ruleId: 'ios.permission.bluetooth.missing',
+      title: 'Bluetooth API evidence found',
+      plistKeys: ['NSBluetoothAlwaysUsageDescription'],
+      tokens: [
+        'CoreBluetooth.framework',
+        'CBCentralManager',
+        'CBPeripheralManager',
+      ],
+    );
+    warnMissingPermission(
+      ruleId: 'ios.permission.face_id.missing',
+      title: 'Face ID API evidence found',
+      plistKeys: ['NSFaceIDUsageDescription'],
+      tokens: [
+        'LocalAuthentication.framework',
+        'LAContext',
+        'deviceOwnerAuthenticationWithBiometrics',
+      ],
+    );
+  }
 
   final notificationEvidence = _matchedEvidence(evidence, [
     'UserNotifications.framework',
@@ -647,9 +678,16 @@ LintFinding _signingInfo(IosArtifact artifact) {
   );
 }
 
-Set<String> _declaredPrivacyCategories(String appPath) {
+Set<String> _declaredPrivacyCategories(
+  String appPath, {
+  bool excludeNestedAppExtensions = false,
+}) {
   final categories = <String>{};
-  for (final manifest in _findFiles(appPath, 'PrivacyInfo.xcprivacy')) {
+  for (final manifest in _findFiles(
+    appPath,
+    'PrivacyInfo.xcprivacy',
+    excludeNestedAppExtensions: excludeNestedAppExtensions,
+  )) {
     try {
       final plist = parsePlistFile(manifest.path);
       final apiTypes = plist['NSPrivacyAccessedAPITypes'];
@@ -768,10 +806,19 @@ const _requiredReasonApiRules = [
   ),
 ];
 
-List<File> _findFiles(String root, String basename) {
+List<File> _findFiles(
+  String root,
+  String basename, {
+  bool excludeNestedAppExtensions = false,
+}) {
   return Directory(root)
       .listSync(recursive: true, followLinks: false)
       .whereType<File>()
+      .where(
+        (file) =>
+            !excludeNestedAppExtensions ||
+            !_isInsideNestedAppExtension(root, file.path),
+      )
       .where((file) => p.basename(file.path) == basename)
       .toList();
 }
@@ -789,6 +836,16 @@ bool _findingsAreRegistered(List<LintFinding> findings) {
     assert(isKnownRule(finding.ruleId), 'Unregistered rule: ${finding.ruleId}');
   }
   return true;
+}
+
+bool _isInsideNestedAppExtension(String root, String path) {
+  final relative = p.relative(path, from: root);
+  if (relative == '.') return false;
+
+  for (final part in p.split(relative)) {
+    if (part.endsWith('.appex')) return true;
+  }
+  return false;
 }
 
 bool _isPlaceholder(String value) {

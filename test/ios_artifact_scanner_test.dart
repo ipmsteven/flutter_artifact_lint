@@ -61,6 +61,33 @@ void main() {
       );
     },
   );
+
+  test(
+    'does not emit plist-dependent cascade findings when Info.plist is invalid',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp('fal_bad_plist_');
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      final appDir = Directory('${tempDir.path}/Runner.app')..createSync();
+      File('${appDir.path}/Info.plist').writeAsStringSync('not a plist');
+      final cameraFramework = Directory(
+        '${appDir.path}/Frameworks/Camera.framework',
+      )..createSync(recursive: true);
+      File(
+        '${cameraFramework.path}/Camera',
+      ).writeAsStringSync('AVCaptureSession');
+
+      final result = await IosArtifactScanner().scan(appDir.path);
+      final failedRuleIds = result.failed.map((finding) => finding.ruleId);
+      final warnedRuleIds = result.warned.map((finding) => finding.ruleId);
+
+      expect(failedRuleIds, contains('ios.info_plist.invalid'));
+      expect(failedRuleIds, isNot(contains('ios.export_compliance.missing')));
+      expect(failedRuleIds, isNot(contains('ios.launch_screen.missing')));
+      expect(failedRuleIds, isNot(contains('ios.orientations.missing')));
+      expect(warnedRuleIds, isNot(contains('ios.permission.camera.missing')));
+    },
+  );
 }
 
 String _plist(Map<String, Object?> values) {

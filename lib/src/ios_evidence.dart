@@ -27,7 +27,10 @@ class IosEvidenceExtractor {
   final List<String> tokens;
   final int maxBytesPerFile;
 
-  EvidenceReport collect(String appPath) {
+  EvidenceReport collect(
+    String appPath, {
+    bool excludeNestedAppExtensions = false,
+  }) {
     final found = <String>{};
     final sources = <String, Set<String>>{};
     final scannedFiles = <String>[];
@@ -40,6 +43,11 @@ class IosEvidenceExtractor {
     for (final entity in Directory(
       appPath,
     ).listSync(recursive: true, followLinks: false)) {
+      if (excludeNestedAppExtensions &&
+          _isInsideNestedAppExtension(appPath, entity.path)) {
+        continue;
+      }
+
       final basename = p.basename(entity.path);
       if (basename.endsWith('.framework')) {
         addEvidence(basename, entity.path);
@@ -90,6 +98,16 @@ class IosEvidenceExtractor {
       '.storyboardc',
     }.contains(ext);
   }
+}
+
+bool _isInsideNestedAppExtension(String root, String path) {
+  final relative = p.relative(path, from: root);
+  if (relative == '.') return false;
+
+  for (final part in p.split(relative)) {
+    if (part.endsWith('.appex')) return true;
+  }
+  return false;
 }
 
 String _asciiText(List<int> bytes) {

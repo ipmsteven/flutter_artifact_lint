@@ -163,6 +163,66 @@ void main() {
       expectRule(result.warned, 'ios.permission.camera.missing');
     },
   );
+
+  test(
+    'does not report extension permission evidence against the main app plist',
+    () async {
+      final fixture = await AppFixture.create();
+      addTearDown(fixture.delete);
+
+      fixture.writeInfoPlist(_validBasePlist());
+      fixture.writeFile(
+        'PlugIns/CameraExtension.appex/Info.plist',
+        _plist({
+          'CFBundleIdentifier': 'com.example.runner.camera',
+          'NSExtension': <String, Object?>{},
+          'NSCameraUsageDescription': 'Capture a document for sharing.',
+        }),
+      );
+      fixture.writeFile(
+        'PlugIns/CameraExtension.appex/CameraExtension',
+        'AVCaptureSession',
+      );
+
+      final result = await IosArtifactScanner().scan(fixture.appPath);
+
+      expect(
+        result.warned.map((finding) => finding.ruleId),
+        isNot(contains('ios.permission.camera.missing')),
+      );
+    },
+  );
+
+  test(
+    'reports extension permission evidence against the extension plist',
+    () async {
+      final fixture = await AppFixture.create();
+      addTearDown(fixture.delete);
+
+      fixture.writeInfoPlist({
+        ..._validBasePlist(),
+        'NSCameraUsageDescription': 'Capture profile photos.',
+      });
+      fixture.writeFile(
+        'PlugIns/CameraExtension.appex/Info.plist',
+        _plist({
+          'CFBundleIdentifier': 'com.example.runner.camera',
+          'NSExtension': <String, Object?>{},
+        }),
+      );
+      fixture.writeFile(
+        'PlugIns/CameraExtension.appex/CameraExtension',
+        'AVCaptureSession',
+      );
+
+      final result = await IosArtifactScanner().scan(fixture.appPath);
+      final finding = result.warned.singleWhere(
+        (finding) => finding.ruleId == 'ios.permission.camera.missing',
+      );
+
+      expect(finding.path, contains('CameraExtension.appex/Info.plist'));
+    },
+  );
 }
 
 void expectRule(List<LintFinding> findings, String ruleId) {
