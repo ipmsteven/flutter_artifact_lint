@@ -60,6 +60,12 @@ void _writeSection(
       if (finding.evidence.isNotEmpty) {
         buffer.writeln('  Evidence: ${finding.evidence.join(', ')}');
       }
+      if (finding.evidenceSources.isNotEmpty) {
+        buffer.writeln('  Evidence Sources:');
+        for (final entry in finding.evidenceSources.entries) {
+          buffer.writeln('    ${entry.key}: ${entry.value.join(', ')}');
+        }
+      }
     }
     buffer.writeln();
   }

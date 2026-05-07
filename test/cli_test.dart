@@ -160,6 +160,137 @@ ignore:
     expect(payload['failedCount'], 0);
     expect(payload['suppressedCount'], 1);
   });
+
+  test('rejects baseline entries with unknown rule ids', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'fal_cli_bad_baseline_',
+    );
+    addTearDown(() => tempDir.delete(recursive: true));
+
+    final appDir = Directory('${tempDir.path}/Runner.app')..createSync();
+    File('${appDir.path}/Info.plist').writeAsStringSync(
+      _plist({
+        'CFBundleIdentifier': 'com.example.runner',
+        'CFBundleShortVersionString': '1.2.3',
+        'CFBundleVersion': '45',
+        'UILaunchStoryboardName': 'LaunchScreen',
+        'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait'],
+        'ITSAppUsesNonExemptEncryption': false,
+      }),
+    );
+    File('${tempDir.path}/baseline.yml').writeAsStringSync('''
+ignore:
+  - ruleId: ios.permission.camra.missing
+''');
+
+    final result = await runCli([
+      'ios',
+      appDir.path,
+      '--baseline',
+      'baseline.yml',
+    ], workingDirectory: tempDir.path);
+
+    expect(result.exitCode, 2);
+    expect(result.stderr, contains('Unknown baseline ruleId'));
+    expect(result.stderr, contains('ios.permission.camra.missing'));
+  });
+
+  test('reports unused baseline entries without failing the scan', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'fal_cli_unused_baseline_',
+    );
+    addTearDown(() => tempDir.delete(recursive: true));
+
+    final appDir = Directory('${tempDir.path}/Runner.app')..createSync();
+    File('${appDir.path}/Info.plist').writeAsStringSync(
+      _plist({
+        'CFBundleIdentifier': 'com.example.runner',
+        'CFBundleShortVersionString': '1.2.3',
+        'CFBundleVersion': '45',
+        'UILaunchStoryboardName': 'LaunchScreen',
+        'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait'],
+        'ITSAppUsesNonExemptEncryption': false,
+      }),
+    );
+    File('${tempDir.path}/baseline.yml').writeAsStringSync('''
+ignore:
+  - ruleId: ios.permission.camera.empty
+    path: Runner.app/Info.plist
+''');
+
+    final result = await runCli([
+      'ios',
+      appDir.path,
+      '--format',
+      'json',
+      '--baseline',
+      'baseline.yml',
+    ], workingDirectory: tempDir.path);
+
+    final payload = jsonDecode(result.stdout) as Map<String, Object?>;
+    final findings = payload['findings'] as List<Object?>;
+
+    expect(result.exitCode, 0);
+    expect(payload['suppressedCount'], 0);
+    expect(
+      findings.cast<Map<String, Object?>>().map((finding) => finding['ruleId']),
+      contains('baseline.unused'),
+    );
+  });
+
+  test(
+    'reports evidence source paths in JSON and verbose text output',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'fal_cli_evidence_',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      final appDir = Directory('${tempDir.path}/Runner.app')..createSync();
+      File('${appDir.path}/Info.plist').writeAsStringSync(
+        _plist({
+          'CFBundleIdentifier': 'com.example.runner',
+          'CFBundleShortVersionString': '1.2.3',
+          'CFBundleVersion': '45',
+          'UILaunchStoryboardName': 'LaunchScreen',
+          'UISupportedInterfaceOrientations': [
+            'UIInterfaceOrientationPortrait',
+          ],
+          'ITSAppUsesNonExemptEncryption': false,
+        }),
+      );
+      final contactsFramework = Directory(
+        '${appDir.path}/Frameworks/Contacts.framework',
+      )..createSync(recursive: true);
+      final contactsBinary = File('${contactsFramework.path}/Contacts')
+        ..writeAsStringSync('CNContactStore');
+
+      final jsonResult = await runCli([
+        'ios',
+        appDir.path,
+        '--format',
+        'json',
+      ], workingDirectory: tempDir.path);
+      final payload = jsonDecode(jsonResult.stdout) as Map<String, Object?>;
+      final findings = payload['findings'] as List<Object?>;
+      final contactsFinding = findings.cast<Map<String, Object?>>().singleWhere(
+        (finding) => finding['ruleId'] == 'ios.permission.contacts.missing',
+      );
+      final sources =
+          contactsFinding['evidenceSources'] as Map<String, Object?>;
+
+      expect(sources['CNContactStore'], contains(contactsBinary.path));
+
+      final textResult = await runCli([
+        'ios',
+        appDir.path,
+        '--verbose',
+      ], workingDirectory: tempDir.path);
+
+      expect(textResult.stdout, contains('Evidence Sources:'));
+      expect(textResult.stdout, contains(contactsBinary.path));
+    },
+  );
 }
 
 String _plist(Map<String, Object?> values) {

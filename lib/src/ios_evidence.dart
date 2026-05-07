@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'macho.dart';
+
 class EvidenceReport {
   const EvidenceReport({
     required this.tokens,
@@ -15,6 +17,16 @@ class EvidenceReport {
 
   List<String> matched(List<String> candidates) {
     return candidates.where(tokens.contains).toList();
+  }
+
+  Map<String, List<String>> sourcesFor(List<String> matchedTokens) {
+    final result = <String, List<String>>{};
+    for (final token in matchedTokens) {
+      final sources = sourcesByToken[token];
+      if (sources == null || sources.isEmpty) continue;
+      result[token] = sources.toList()..sort();
+    }
+    return result;
   }
 }
 
@@ -58,6 +70,14 @@ class IosEvidenceExtractor {
       if (bytes.isEmpty) continue;
 
       scannedFiles.add(entity.path);
+      for (final dylib in const MachOParser().parse(bytes).linkedDylibs) {
+        final frameworkToken = _frameworkToken(dylib.path);
+        if (frameworkToken != null) addEvidence(frameworkToken, entity.path);
+        if (_isPrivateFrameworkPath(dylib.path)) {
+          addEvidence(dylib.path, entity.path);
+        }
+      }
+
       final text = _asciiText(bytes);
       for (final token in tokens) {
         if (text.contains(token)) addEvidence(token, entity.path);
@@ -98,6 +118,17 @@ class IosEvidenceExtractor {
       '.storyboardc',
     }.contains(ext);
   }
+}
+
+String? _frameworkToken(String dylibPath) {
+  for (final part in p.split(dylibPath)) {
+    if (part.endsWith('.framework')) return part;
+  }
+  return null;
+}
+
+bool _isPrivateFrameworkPath(String dylibPath) {
+  return p.split(dylibPath).contains('PrivateFrameworks');
 }
 
 bool _isInsideNestedAppExtension(String root, String path) {

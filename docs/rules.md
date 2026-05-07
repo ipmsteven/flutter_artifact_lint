@@ -2,6 +2,10 @@
 
 This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 
+## Baseline
+
+`baseline.unused` reports a baseline entry that did not match any current finding.
+
 ## Failed
 
 `ios.info_plist.missing` reports an app-like bundle without `Info.plist`.
@@ -38,6 +42,8 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 
 `ios.privacy_manifest.empty_reasons` reports a required-reason entry without reason codes.
 
+`ios.privacy_manifest.invalid_reason` reports a reason code that is not valid for the declared required-reason API category.
+
 ## Warned
 
 `ios.permission.contacts.missing` reports contacts API evidence without `NSContactsUsageDescription`.
@@ -70,6 +76,8 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 
 `ios.private_api.selector` reports private selector evidence.
 
+`ios.private_api.framework` reports Mach-O load commands that link private Apple frameworks.
+
 `ios.dynamic_code_execution.evidence` reports dynamic loading or script execution evidence.
 
 ## Info
@@ -85,3 +93,21 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 `ios.signing.unavailable` reports that signing state is unavailable for an unsigned artifact.
 
 `ios.signing.present` reports that signing data appears to be present.
+
+## Parser Coverage and Remaining Gaps
+
+`test/string_scanner_gap_matrix_test.dart` documents parser acceptance cases and
+remaining cases that the current string scanner intentionally does not cover
+yet. The remaining gap cases are future parser acceptance targets.
+
+Mach-O load-command evidence is parsed for `LC_LOAD_DYLIB` and
+`LC_LOAD_WEAK_DYLIB`. This lets the scanner report system framework evidence
+even when the framework name appears only in load-command metadata.
+
+Mach-O build metadata is not parsed yet. A future parser can read
+`LC_BUILD_VERSION` to report deployment target, SDK, platform, and architecture
+details that do not exist as normal strings.
+
+Codesign entitlements and provisioning metadata are not parsed yet. A signed
+artifact can contain push, app group, iCloud, associated-domain, or
+debug-entitlement state without any matching binary evidence token.

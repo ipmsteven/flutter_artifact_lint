@@ -60,7 +60,10 @@ location background mode, and malformed privacy manifest declarations.
 `warned` findings are binary evidence that needs developer confirmation:
 permission APIs without matching purpose strings, notification SDK/API evidence,
 required reason API traces without matching `PrivacyInfo.xcprivacy` categories,
-`UIWebView`, private selector strings, and dynamic code execution traces.
+`UIWebView`, private selector strings, private framework links, and dynamic code
+execution traces.
+JSON output and verbose text output include evidence source paths when binary
+tokens can be traced back to files in the artifact.
 
 `info` findings describe the scanned artifact, bundle identity, version, and
 whether signing data is available. Unsigned Flutter `.app` outputs cannot prove
@@ -71,6 +74,8 @@ permission-purpose checks, so extension evidence is evaluated against the
 extension `Info.plist` instead of the main app `Info.plist`.
 
 All emitted rule IDs are documented in [`docs/rules.md`](docs/rules.md).
+Required-reason API reason-code validation is based on Apple's
+`NSPrivacyAccessedAPIType` documentation checked on 2026-05-07.
 
 ## Baseline
 
@@ -82,6 +87,10 @@ ignore:
   - ruleId: ios.permission.camera.missing
     path: Frameworks/CameraSDK.framework/CameraSDK
 ```
+
+Baseline entries with unknown rule IDs fail the CLI. Entries that do not match
+any current finding are reported as `baseline.unused` so stale suppressions can
+be removed.
 
 Then run:
 
@@ -95,6 +104,12 @@ Fast tests:
 
 ```bash
 dart test
+```
+
+Mach-O parser and string-scanner gap matrix:
+
+```bash
+dart test test/string_scanner_gap_matrix_test.dart
 ```
 
 Real Flutter iOS build E2E test:

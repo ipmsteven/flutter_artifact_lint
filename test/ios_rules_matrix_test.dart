@@ -105,6 +105,48 @@ void main() {
     },
   );
 
+  test(
+    'reports invalid required reason codes for the declared API category',
+    () async {
+      final fixture = await AppFixture.create();
+      addTearDown(fixture.delete);
+
+      fixture.writeInfoPlist(_validBasePlist());
+      fixture.writePrivacyManifest([
+        {
+          'NSPrivacyAccessedAPIType':
+              'NSPrivacyAccessedAPICategoryUserDefaults',
+          'NSPrivacyAccessedAPITypeReasons': ['C617.1'],
+        },
+        {
+          'NSPrivacyAccessedAPIType':
+              'NSPrivacyAccessedAPICategoryActiveKeyboards',
+          'NSPrivacyAccessedAPITypeReasons': ['54BD.1'],
+        },
+      ]);
+
+      final result = await IosArtifactScanner().scan(fixture.appPath);
+      final finding = result.failed.singleWhere(
+        (finding) => finding.ruleId == 'ios.privacy_manifest.invalid_reason',
+      );
+
+      expect(finding.message, contains('C617.1'));
+      expect(
+        finding.message,
+        contains('NSPrivacyAccessedAPICategoryUserDefaults'),
+      );
+      expect(
+        result.failed
+            .where(
+              (finding) =>
+                  finding.ruleId == 'ios.privacy_manifest.invalid_reason',
+            )
+            .length,
+        1,
+      );
+    },
+  );
+
   test('reports private API and dynamic code evidence as warnings', () async {
     final fixture = await AppFixture.create();
     addTearDown(fixture.delete);

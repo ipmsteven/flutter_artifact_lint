@@ -31,6 +31,7 @@ class LintFinding {
     this.fix,
     this.path,
     this.evidence = const [],
+    this.evidenceSources = const {},
   });
 
   final FindingLevel level;
@@ -40,6 +41,7 @@ class LintFinding {
   final String? fix;
   final String? path;
   final List<String> evidence;
+  final Map<String, List<String>> evidenceSources;
 
   Map<String, Object?> toJson() => {
     'level': level.name,
@@ -49,6 +51,7 @@ class LintFinding {
     if (fix != null) 'fix': fix,
     if (path != null) 'path': path,
     if (evidence.isNotEmpty) 'evidence': evidence,
+    if (evidenceSources.isNotEmpty) 'evidenceSources': evidenceSources,
   };
 }
 

@@ -6,6 +6,7 @@ enum RuleSource {
   privacyManifest,
   binaryEvidence,
   signing,
+  baseline,
 }
 
 enum RuleConfidence { deterministic, evidence, informational }
@@ -34,7 +35,45 @@ class RuleDefinition {
   };
 }
 
+class FindingBuilder {
+  const FindingBuilder(this.registry);
+
+  final Map<String, RuleDefinition> registry;
+
+  LintFinding build(
+    String ruleId, {
+    required String message,
+    String? path,
+    List<String> evidence = const [],
+    Map<String, List<String>> evidenceSources = const {},
+  }) {
+    final rule = registry[ruleId];
+    if (rule == null) {
+      throw StateError('Unknown rule: $ruleId');
+    }
+
+    return LintFinding(
+      level: rule.defaultLevel,
+      ruleId: rule.ruleId,
+      title: rule.title,
+      message: message,
+      fix: rule.defaultLevel == FindingLevel.info ? null : rule.fix,
+      path: path,
+      evidence: evidence,
+      evidenceSources: evidenceSources,
+    );
+  }
+}
+
 const ruleRegistry = <String, RuleDefinition>{
+  'baseline.unused': RuleDefinition(
+    ruleId: 'baseline.unused',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.baseline,
+    title: 'Unused baseline entry',
+    description: 'A baseline entry did not match any current finding.',
+    fix: 'Remove stale baseline entries or update their path.',
+  ),
   'ios.info_plist.missing': RuleDefinition(
     ruleId: 'ios.info_plist.missing',
     defaultLevel: FindingLevel.failed,
@@ -205,6 +244,15 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'A required reason API category has no reason codes.',
     fix: 'Add at least one NSPrivacyAccessedAPITypeReasons code.',
   ),
+  'ios.privacy_manifest.invalid_reason': RuleDefinition(
+    ruleId: 'ios.privacy_manifest.invalid_reason',
+    defaultLevel: FindingLevel.failed,
+    source: RuleSource.privacyManifest,
+    title: 'Invalid required reason code',
+    description:
+        'A required reason API category declares a reason code Apple does not allow for that category.',
+    fix: 'Use a reason code approved for the declared API category.',
+  ),
   'ios.permission.contacts.missing': RuleDefinition(
     ruleId: 'ios.permission.contacts.missing',
     defaultLevel: FindingLevel.warned,
@@ -333,6 +381,14 @@ const ruleRegistry = <String, RuleDefinition>{
         'Strings that look like private Apple API usage were detected.',
     fix: 'Remove private API references from app code and bundled SDKs.',
   ),
+  'ios.private_api.framework': RuleDefinition(
+    ruleId: 'ios.private_api.framework',
+    defaultLevel: FindingLevel.warned,
+    source: RuleSource.binaryEvidence,
+    title: 'Private framework link found',
+    description: 'A Mach-O load command links a private Apple framework.',
+    fix: 'Remove links to private Apple frameworks.',
+  ),
   'ios.dynamic_code_execution.evidence': RuleDefinition(
     ruleId: 'ios.dynamic_code_execution.evidence',
     defaultLevel: FindingLevel.warned,
@@ -359,5 +415,23 @@ const ruleRegistry = <String, RuleDefinition>{
     fix: 'No action required.',
   ),
 };
+
+const findingBuilder = FindingBuilder(ruleRegistry);
+
+LintFinding buildFinding(
+  String ruleId, {
+  required String message,
+  String? path,
+  List<String> evidence = const [],
+  Map<String, List<String>> evidenceSources = const {},
+}) {
+  return findingBuilder.build(
+    ruleId,
+    message: message,
+    path: path,
+    evidence: evidence,
+    evidenceSources: evidenceSources,
+  );
+}
 
 bool isKnownRule(String ruleId) => ruleRegistry.containsKey(ruleId);

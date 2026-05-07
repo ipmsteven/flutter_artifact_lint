@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
 import 'model.dart';
+import 'rules.dart';
 
 class BaselineException implements Exception {
   const BaselineException(this.message);
@@ -43,19 +44,39 @@ class Baseline {
       throw const BaselineException('Baseline ignore must be a YAML list.');
     }
 
-    return Baseline(ignore.map(_entryFromYaml).toList());
+    final entries = ignore.map(_entryFromYaml).toList();
+    for (final entry in entries) {
+      if (!isKnownRule(entry.ruleId)) {
+        throw BaselineException('Unknown baseline ruleId: ${entry.ruleId}');
+      }
+    }
+
+    return Baseline(entries);
   }
 
   ScanResult applyTo(ScanResult result) {
     final kept = <LintFinding>[];
+    final matchedEntries = <BaselineEntry>{};
     var suppressed = 0;
 
     for (final finding in result.findings) {
-      if (entries.any((entry) => entry.matches(finding))) {
+      final matched = entries.where((entry) => entry.matches(finding)).toList();
+      if (matched.isNotEmpty) {
+        matchedEntries.addAll(matched);
         suppressed++;
       } else {
         kept.add(finding);
       }
+    }
+
+    for (final entry in entries) {
+      if (matchedEntries.contains(entry)) continue;
+      kept.add(
+        buildFinding(
+          'baseline.unused',
+          message: 'Baseline entry did not match any finding: ${entry.label}.',
+        ),
+      );
     }
 
     return result.copyWith(
@@ -93,6 +114,8 @@ class BaselineEntry {
 
   final String ruleId;
   final String? path;
+
+  String get label => path == null ? ruleId : '$ruleId ($path)';
 
   bool matches(LintFinding finding) {
     if (finding.ruleId != ruleId) return false;

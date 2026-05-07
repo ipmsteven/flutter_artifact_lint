@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'ios_evidence.dart';
 import 'model.dart';
 import 'plist.dart';
+import 'privacy_manifest_rules.dart';
 import 'rules.dart';
 
 class IosArtifactScanner {
@@ -17,12 +18,9 @@ class IosArtifactScanner {
 
     if (!File(infoPlistPath).existsSync()) {
       findings.add(
-        LintFinding(
-          level: FindingLevel.failed,
-          ruleId: 'ios.info_plist.missing',
-          title: 'Missing Info.plist',
+        buildFinding(
+          'ios.info_plist.missing',
           message: 'The app bundle does not contain Info.plist.',
-          fix: 'Build a valid iOS app bundle before scanning.',
           path: infoPlistPath,
         ),
       );
@@ -32,13 +30,10 @@ class IosArtifactScanner {
         parsedInfoPlist = true;
       } on PlistParseException catch (error) {
         findings.add(
-          LintFinding(
-            level: FindingLevel.failed,
-            ruleId: 'ios.info_plist.invalid',
-            title: 'Invalid Info.plist',
+          buildFinding(
+            'ios.info_plist.invalid',
             message:
                 'Info.plist cannot be parsed as a plist: ${error.message}.',
-            fix: 'Fix or regenerate Info.plist.',
             path: infoPlistPath,
           ),
         );
@@ -126,20 +121,13 @@ List<LintFinding> _bundleInfo(
   IosArtifact artifact,
 ) {
   final findings = <LintFinding>[];
-  void addInfo(String ruleId, String title, String message) {
-    findings.add(
-      LintFinding(
-        level: FindingLevel.info,
-        ruleId: ruleId,
-        title: title,
-        message: message,
-      ),
-    );
+  void addInfo(String ruleId, String message) {
+    findings.add(buildFinding(ruleId, message: message));
   }
 
   final bundleId = plist['CFBundleIdentifier'];
   if (bundleId is String && bundleId.trim().isNotEmpty) {
-    addInfo('ios.bundle.identifier', 'Bundle ID', bundleId);
+    addInfo('ios.bundle.identifier', bundleId);
   }
 
   final version = plist['CFBundleShortVersionString'];
@@ -147,12 +135,11 @@ List<LintFinding> _bundleInfo(
   if (version is String || build is String) {
     addInfo(
       'ios.bundle.version',
-      'Version',
       '${version ?? 'unknown'} (${build ?? 'unknown'})',
     );
   }
 
-  addInfo('ios.artifact.type', 'Artifact type', artifact.displayType);
+  addInfo('ios.artifact.type', artifact.displayType);
   return findings;
 }
 
@@ -167,13 +154,9 @@ List<LintFinding> _deterministicPlistRules(
 
   if (plist['ITSAppUsesNonExemptEncryption'] == null) {
     findings.add(
-      LintFinding(
-        level: FindingLevel.failed,
-        ruleId: 'ios.export_compliance.missing',
-        title: 'Missing export compliance flag',
+      buildFinding(
+        'ios.export_compliance.missing',
         message: 'Info.plist is missing ITSAppUsesNonExemptEncryption.',
-        fix:
-            'Add ITSAppUsesNonExemptEncryption with the correct value for your app.',
         path: infoPlistPath,
       ),
     );
@@ -182,13 +165,10 @@ List<LintFinding> _deterministicPlistRules(
   if (plist['UILaunchStoryboardName'] == null &&
       plist['UILaunchScreen'] == null) {
     findings.add(
-      LintFinding(
-        level: FindingLevel.failed,
-        ruleId: 'ios.launch_screen.missing',
-        title: 'Missing launch screen',
+      buildFinding(
+        'ios.launch_screen.missing',
         message:
             'Info.plist is missing UILaunchStoryboardName or UILaunchScreen.',
-        fix: 'Configure a launch storyboard or launch screen.',
         path: infoPlistPath,
       ),
     );
@@ -197,13 +177,10 @@ List<LintFinding> _deterministicPlistRules(
   final orientations = plist['UISupportedInterfaceOrientations'];
   if (orientations is! List || orientations.isEmpty) {
     findings.add(
-      LintFinding(
-        level: FindingLevel.failed,
-        ruleId: 'ios.orientations.missing',
-        title: 'Missing supported orientations',
+      buildFinding(
+        'ios.orientations.missing',
         message:
             'Info.plist does not declare UISupportedInterfaceOrientations.',
-        fix: 'Declare at least one supported interface orientation.',
         path: infoPlistPath,
       ),
     );
@@ -214,14 +191,10 @@ List<LintFinding> _deterministicPlistRules(
     final hasBackgroundLocation = modes is List && modes.contains('location');
     if (!hasBackgroundLocation) {
       findings.add(
-        LintFinding(
-          level: FindingLevel.failed,
-          ruleId: 'ios.location.always_without_background_mode',
-          title: 'Always location lacks background mode',
+        buildFinding(
+          'ios.location.always_without_background_mode',
           message:
               'Always location is declared but UIBackgroundModes does not include location.',
-          fix:
-              'Add the location background mode only if the app truly needs always-on location.',
           path: infoPlistPath,
         ),
       );
@@ -267,12 +240,9 @@ List<LintFinding> _permissionPurposeStringRules(
     final value = plist[entry.key];
     if (value is String && _isPlaceholder(value)) {
       findings.add(
-        LintFinding(
-          level: FindingLevel.failed,
-          ruleId: entry.value.$1,
-          title: 'Invalid ${entry.value.$2}',
+        buildFinding(
+          entry.value.$1,
           message: '$entry.key is empty or still looks like placeholder text.',
-          fix: 'Replace $entry.key with a specific user-facing explanation.',
           path: infoPlistPath,
         ),
       );
@@ -287,13 +257,9 @@ List<LintFinding> _atsRules(Map<String, Object?> plist, String infoPlistPath) {
   if (ats is! Map || ats['NSAllowsArbitraryLoads'] != true) return const [];
 
   return [
-    LintFinding(
-      level: FindingLevel.failed,
-      ruleId: 'ios.ats.arbitrary_loads',
-      title: 'ATS allows arbitrary loads',
+    buildFinding(
+      'ios.ats.arbitrary_loads',
       message: 'NSAllowsArbitraryLoads is enabled in the release artifact.',
-      fix:
-          'Remove the global ATS exception or replace it with narrow exception domains.',
       path: infoPlistPath,
     ),
   ];
@@ -305,12 +271,9 @@ List<LintFinding> _nestedBundleRules(String appPath) {
     final infoPlistPath = p.join(bundle.path, 'Info.plist');
     if (!File(infoPlistPath).existsSync()) {
       findings.add(
-        LintFinding(
-          level: FindingLevel.failed,
-          ruleId: 'ios.info_plist.missing',
-          title: 'Missing Info.plist',
+        buildFinding(
+          'ios.info_plist.missing',
           message: 'The nested bundle does not contain Info.plist.',
-          fix: 'Build a valid iOS app extension before scanning.',
           path: infoPlistPath,
         ),
       );
@@ -321,10 +284,8 @@ List<LintFinding> _nestedBundleRules(String appPath) {
       final plist = parsePlistFile(infoPlistPath);
       findings
         ..add(
-          LintFinding(
-            level: FindingLevel.info,
-            ruleId: 'ios.bundle.nested',
-            title: 'Nested bundle',
+          buildFinding(
+            'ios.bundle.nested',
             message: p.relative(bundle.path, from: appPath),
             path: bundle.path,
           ),
@@ -341,13 +302,10 @@ List<LintFinding> _nestedBundleRules(String appPath) {
         );
     } on PlistParseException catch (error) {
       findings.add(
-        LintFinding(
-          level: FindingLevel.failed,
-          ruleId: 'ios.info_plist.invalid',
-          title: 'Invalid Info.plist',
+        buildFinding(
+          'ios.info_plist.invalid',
           message:
               'Nested Info.plist cannot be parsed as a plist: ${error.message}.',
-          fix: 'Fix or regenerate Info.plist.',
           path: infoPlistPath,
         ),
       );
@@ -365,12 +323,9 @@ List<LintFinding> _privacyManifestRules(String appPath) {
       if (apiTypes == null) continue;
       if (apiTypes is! List) {
         findings.add(
-          LintFinding(
-            level: FindingLevel.failed,
-            ruleId: 'ios.privacy_manifest.invalid_accessed_api_types',
-            title: 'Invalid accessed API declaration',
+          buildFinding(
+            'ios.privacy_manifest.invalid_accessed_api_types',
             message: 'NSPrivacyAccessedAPITypes must be an array.',
-            fix: 'Use an array of accessed API type dictionaries.',
             path: manifest.path,
           ),
         );
@@ -380,13 +335,10 @@ List<LintFinding> _privacyManifestRules(String appPath) {
       for (final apiType in apiTypes) {
         if (apiType is! Map) {
           findings.add(
-            LintFinding(
-              level: FindingLevel.failed,
-              ruleId: 'ios.privacy_manifest.invalid_accessed_api_types',
-              title: 'Invalid accessed API declaration',
+            buildFinding(
+              'ios.privacy_manifest.invalid_accessed_api_types',
               message:
                   'Every NSPrivacyAccessedAPITypes entry must be a dictionary.',
-              fix: 'Replace invalid entries with accessed API dictionaries.',
               path: manifest.path,
             ),
           );
@@ -396,13 +348,10 @@ List<LintFinding> _privacyManifestRules(String appPath) {
         final category = apiType['NSPrivacyAccessedAPIType'];
         if (category is! String || category.trim().isEmpty) {
           findings.add(
-            LintFinding(
-              level: FindingLevel.failed,
-              ruleId: 'ios.privacy_manifest.missing_api_type',
-              title: 'Missing accessed API type',
+            buildFinding(
+              'ios.privacy_manifest.missing_api_type',
               message:
                   'A privacy manifest accessed API entry is missing NSPrivacyAccessedAPIType.',
-              fix: 'Declare the required reason API category.',
               path: manifest.path,
             ),
           );
@@ -410,34 +359,65 @@ List<LintFinding> _privacyManifestRules(String appPath) {
 
         if (!_hasReasonCodes(apiType['NSPrivacyAccessedAPITypeReasons'])) {
           findings.add(
-            LintFinding(
-              level: FindingLevel.failed,
-              ruleId: 'ios.privacy_manifest.empty_reasons',
-              title: 'Missing required reason codes',
+            buildFinding(
+              'ios.privacy_manifest.empty_reasons',
               message:
                   '${category is String ? category : 'A required reason API category'} has no reason codes.',
-              fix: 'Add at least one NSPrivacyAccessedAPITypeReasons code.',
               path: manifest.path,
               evidence: category is String ? [category] : const [],
+            ),
+          );
+        }
+
+        if (category is String) {
+          findings.addAll(
+            _invalidRequiredReasonRules(
+              category,
+              apiType['NSPrivacyAccessedAPITypeReasons'],
+              manifest.path,
             ),
           );
         }
       }
     } on PlistParseException catch (error) {
       findings.add(
-        LintFinding(
-          level: FindingLevel.failed,
-          ruleId: 'ios.privacy_manifest.invalid',
-          title: 'Invalid privacy manifest',
+        buildFinding(
+          'ios.privacy_manifest.invalid',
           message:
               'PrivacyInfo.xcprivacy exists but cannot be parsed as a plist: ${error.message}.',
-          fix: 'Replace it with a valid App Privacy manifest.',
           path: manifest.path,
         ),
       );
     }
   }
   return findings;
+}
+
+List<LintFinding> _invalidRequiredReasonRules(
+  String category,
+  Object? reasons,
+  String manifestPath,
+) {
+  if (reasons is! List) return const [];
+  final allowedReasons = requiredReasonCodesByCategory[category];
+  if (allowedReasons == null) return const [];
+
+  final invalidReasons = reasons
+      .whereType<String>()
+      .where((reason) => reason.trim().isNotEmpty)
+      .where((reason) => !allowedReasons.contains(reason))
+      .toList();
+  if (invalidReasons.isEmpty) return const [];
+
+  return [
+    buildFinding(
+      'ios.privacy_manifest.invalid_reason',
+      message:
+          '${invalidReasons.join(' / ')} is not valid for $category. Allowed reason codes: ${allowedReasons.join(', ')}.',
+      path: manifestPath,
+      evidence: [category, ...invalidReasons],
+    ),
+  ];
 }
 
 List<LintFinding> _binaryEvidenceRules(
@@ -458,7 +438,6 @@ List<LintFinding> _binaryEvidenceRules(
 
   void warnMissingPermission({
     required String ruleId,
-    required String title,
     required List<String> plistKeys,
     required List<String> tokens,
   }) {
@@ -467,16 +446,13 @@ List<LintFinding> _binaryEvidenceRules(
       return;
     }
     findings.add(
-      LintFinding(
-        level: FindingLevel.warned,
-        ruleId: ruleId,
-        title: title,
+      buildFinding(
+        ruleId,
         message:
             '${matched.join(' / ')} detected, but ${plistKeys.join(' or ')} is missing.',
-        fix:
-            'Add the matching usage description if this capability is reachable in the release app.',
         path: infoPlistPath,
         evidence: matched,
+        evidenceSources: evidence.sourcesFor(matched),
       ),
     );
   }
@@ -484,7 +460,6 @@ List<LintFinding> _binaryEvidenceRules(
   if (canCheckMissingPermissions) {
     warnMissingPermission(
       ruleId: 'ios.permission.contacts.missing',
-      title: 'Contacts API evidence found',
       plistKeys: ['NSContactsUsageDescription'],
       tokens: [
         'Contacts.framework',
@@ -494,7 +469,6 @@ List<LintFinding> _binaryEvidenceRules(
     );
     warnMissingPermission(
       ruleId: 'ios.permission.camera.missing',
-      title: 'Camera API evidence found',
       plistKeys: ['NSCameraUsageDescription'],
       tokens: [
         'AVCaptureSession',
@@ -504,13 +478,11 @@ List<LintFinding> _binaryEvidenceRules(
     );
     warnMissingPermission(
       ruleId: 'ios.permission.microphone.missing',
-      title: 'Microphone API evidence found',
       plistKeys: ['NSMicrophoneUsageDescription'],
       tokens: ['AVAudioRecorder', 'AVAudioEngine', 'SFSpeechRecognizer'],
     );
     warnMissingPermission(
       ruleId: 'ios.permission.location.missing',
-      title: 'Location API evidence found',
       plistKeys: [
         'NSLocationWhenInUseUsageDescription',
         'NSLocationAlwaysAndWhenInUseUsageDescription',
@@ -525,7 +497,6 @@ List<LintFinding> _binaryEvidenceRules(
     );
     warnMissingPermission(
       ruleId: 'ios.permission.photos.missing',
-      title: 'Photo library API evidence found',
       plistKeys: [
         'NSPhotoLibraryUsageDescription',
         'NSPhotoLibraryAddUsageDescription',
@@ -540,7 +511,6 @@ List<LintFinding> _binaryEvidenceRules(
     );
     warnMissingPermission(
       ruleId: 'ios.permission.bluetooth.missing',
-      title: 'Bluetooth API evidence found',
       plistKeys: ['NSBluetoothAlwaysUsageDescription'],
       tokens: [
         'CoreBluetooth.framework',
@@ -550,7 +520,6 @@ List<LintFinding> _binaryEvidenceRules(
     );
     warnMissingPermission(
       ruleId: 'ios.permission.face_id.missing',
-      title: 'Face ID API evidence found',
       plistKeys: ['NSFaceIDUsageDescription'],
       tokens: [
         'LocalAuthentication.framework',
@@ -571,15 +540,12 @@ List<LintFinding> _binaryEvidenceRules(
   ]);
   if (notificationEvidence.isNotEmpty) {
     findings.add(
-      LintFinding(
-        level: FindingLevel.warned,
-        ruleId: 'ios.notification.evidence',
-        title: 'Notification evidence found',
+      buildFinding(
+        'ios.notification.evidence',
         message:
             '${notificationEvidence.join(' / ')} detected; notification authorization and push entitlements are runtime or signed-artifact concerns.',
-        fix:
-            'Verify the app requests notification authorization intentionally and check push entitlements after signing.',
         evidence: notificationEvidence,
+        evidenceSources: evidence.sourcesFor(notificationEvidence),
       ),
     );
   }
@@ -590,15 +556,12 @@ List<LintFinding> _binaryEvidenceRules(
       continue;
     }
     findings.add(
-      LintFinding(
-        level: FindingLevel.warned,
-        ruleId: rule.ruleId,
-        title: rule.title,
+      buildFinding(
+        rule.ruleId,
         message:
             '${matched.join(' / ')} detected, but ${rule.category} was not declared in PrivacyInfo.xcprivacy.',
-        fix:
-            'Declare ${rule.category} with a valid required reason if this API is reachable in the release app.',
         evidence: matched,
+        evidenceSources: evidence.sourcesFor(matched),
       ),
     );
   }
@@ -606,13 +569,11 @@ List<LintFinding> _binaryEvidenceRules(
   final uiWebViewEvidence = _matchedEvidence(evidence, ['UIWebView']);
   if (uiWebViewEvidence.isNotEmpty) {
     findings.add(
-      LintFinding(
-        level: FindingLevel.warned,
-        ruleId: 'ios.private_api.uiwebview',
-        title: 'UIWebView evidence found',
+      buildFinding(
+        'ios.private_api.uiwebview',
         message: 'UIWebView traces were detected in the release artifact.',
-        fix: 'Remove old SDKs or code paths that still reference UIWebView.',
         evidence: uiWebViewEvidence,
+        evidenceSources: evidence.sourcesFor(uiWebViewEvidence),
       ),
     );
   }
@@ -624,14 +585,25 @@ List<LintFinding> _binaryEvidenceRules(
   ]);
   if (privateSelectorEvidence.isNotEmpty) {
     findings.add(
-      LintFinding(
-        level: FindingLevel.warned,
-        ruleId: 'ios.private_api.selector',
-        title: 'Private selector evidence found',
+      buildFinding(
+        'ios.private_api.selector',
         message:
             '${privateSelectorEvidence.join(' / ')} looks like private Apple API usage.',
-        fix: 'Remove private API references from app code and bundled SDKs.',
         evidence: privateSelectorEvidence,
+        evidenceSources: evidence.sourcesFor(privateSelectorEvidence),
+      ),
+    );
+  }
+
+  final privateFrameworkEvidence = _privateFrameworkEvidence(evidence);
+  if (privateFrameworkEvidence.isNotEmpty) {
+    findings.add(
+      buildFinding(
+        'ios.private_api.framework',
+        message:
+            '${privateFrameworkEvidence.join(' / ')} links a private Apple framework.',
+        evidence: privateFrameworkEvidence,
+        evidenceSources: evidence.sourcesFor(privateFrameworkEvidence),
       ),
     );
   }
@@ -644,15 +616,12 @@ List<LintFinding> _binaryEvidenceRules(
   ]);
   if (dynamicCodeEvidence.isNotEmpty) {
     findings.add(
-      LintFinding(
-        level: FindingLevel.warned,
-        ruleId: 'ios.dynamic_code_execution.evidence',
-        title: 'Dynamic code execution evidence found',
+      buildFinding(
+        'ios.dynamic_code_execution.evidence',
         message:
             '${dynamicCodeEvidence.join(' / ')} detected in the release artifact.',
-        fix:
-            'Verify this is limited to allowed SDK behavior and does not download or execute new app code.',
         evidence: dynamicCodeEvidence,
+        evidenceSources: evidence.sourcesFor(dynamicCodeEvidence),
       ),
     );
   }
@@ -662,18 +631,14 @@ List<LintFinding> _binaryEvidenceRules(
 
 LintFinding _signingInfo(IosArtifact artifact) {
   if (artifact.type == ArtifactType.unsignedApp) {
-    return const LintFinding(
-      level: FindingLevel.info,
-      ruleId: 'ios.signing.unavailable',
-      title: 'Signing',
+    return buildFinding(
+      'ios.signing.unavailable',
       message: 'unavailable (unsigned artifact)',
     );
   }
 
-  return const LintFinding(
-    level: FindingLevel.info,
-    ruleId: 'ios.signing.present',
-    title: 'Signing',
+  return buildFinding(
+    'ios.signing.present',
     message: 'signed artifact detected',
   );
 }
@@ -713,6 +678,13 @@ bool _hasReasonCodes(Object? reasons) {
 
 List<String> _matchedEvidence(EvidenceReport evidence, List<String> tokens) {
   return evidence.matched(tokens);
+}
+
+List<String> _privateFrameworkEvidence(EvidenceReport evidence) {
+  return evidence.tokens
+      .where((token) => token.contains('/PrivateFrameworks/'))
+      .toList()
+    ..sort();
 }
 
 const _evidenceTokens = [
