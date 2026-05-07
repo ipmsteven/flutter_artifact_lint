@@ -173,6 +173,20 @@ void main() {
       expect(finding.message, contains('pointer format 9'));
       expect(finding.message, contains('page size 16384'));
     });
+
+    test('reports function starts metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOWithFunctionStarts([0x100, 0x120, 0x1a0]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.function_starts',
+      );
+
+      expect(finding.message, contains('count 3'));
+      expect(finding.message, contains('first offset 256'));
+      expect(finding.message, contains('last offset 416'));
+    });
   });
 
   group('Mach-O architecture parser acceptance', () {
@@ -434,6 +448,30 @@ List<int> _machOWithChainedFixups() {
   ];
 }
 
+List<int> _machOWithFunctionStarts(List<int> offsets) {
+  final functionStarts = _functionStartsBytes(offsets);
+  final dataOffset = 32 + 16;
+  return [
+    ..._machOHeaderBytes(ncmds: 1, sizeofcmds: 16),
+    ..._u32(0x26),
+    ..._u32(16),
+    ..._u32(dataOffset),
+    ..._u32(functionStarts.length),
+    ...functionStarts,
+  ];
+}
+
+List<int> _functionStartsBytes(List<int> offsets) {
+  final result = <int>[];
+  var previous = 0;
+  for (final offset in offsets) {
+    result.addAll(_uleb128(offset - previous));
+    previous = offset;
+  }
+  result.add(0);
+  return result;
+}
+
 List<int> _chainedFixupsPayload() {
   final starts = _chainedStartsInImagePayload();
   const headerSize = 28;
@@ -488,6 +526,18 @@ List<int> _u32be(int value) {
 
 List<int> _u16(int value) {
   return [value & 0xff, (value >> 8) & 0xff];
+}
+
+List<int> _uleb128(int value) {
+  final result = <int>[];
+  var remaining = value;
+  do {
+    var byte = remaining & 0x7f;
+    remaining >>= 7;
+    if (remaining != 0) byte |= 0x80;
+    result.add(byte);
+  } while (remaining != 0);
+  return result;
 }
 
 List<int> _u64(int value) {

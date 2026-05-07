@@ -65,6 +65,7 @@ enum MachOMetadataKind {
   encryptionInfo,
   entryPoint,
   chainedFixups,
+  functionStarts,
 }
 
 class MachOMetadataEvidence {
@@ -232,6 +233,16 @@ class IosEvidenceExtractor {
         );
       }
 
+      for (final functionStarts in machoReport.functionStarts) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.functionStarts,
+            sourcePath: entity.path,
+            value: _functionStartsValue(functionStarts),
+          ),
+        );
+      }
+
       for (final sectionString in machoReport.sectionStrings) {
         for (final token in _matchedTokens(sectionString.value, tokens)) {
           addEvidence(token, '${entity.path}#${sectionString.sectionName}');
@@ -387,6 +398,16 @@ String _chainedFixupsValue(MachOChainedFixups chainedFixup) {
     'imports format ${chainedFixup.importsFormat}',
     'symbols format ${chainedFixup.symbolsFormat}',
     ...segmentValues,
+  ].join('; ');
+}
+
+String _functionStartsValue(MachOFunctionStarts functionStarts) {
+  final offsets = functionStarts.offsets;
+  return [
+    'count ${offsets.length}',
+    'data size ${functionStarts.dataSize}',
+    if (offsets.isNotEmpty) 'first offset ${offsets.first}',
+    if (offsets.isNotEmpty) 'last offset ${offsets.last}',
   ].join('; ');
 }
 

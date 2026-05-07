@@ -480,6 +480,28 @@ void main() {
       },
     );
 
+    test('reads LC_FUNCTION_STARTS offsets from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithFunctionStarts([0x100, 0x120, 0x1a0]),
+      );
+
+      expect(report.functionStarts, hasLength(1));
+      expect(report.functionStarts.single.dataSize, greaterThan(0));
+      expect(report.functionStarts.single.offsets, [0x100, 0x120, 0x1a0]);
+    });
+
+    test('reads LC_FUNCTION_STARTS offsets from the file-backed parser', () {
+      final root = Directory.systemTemp.createTempSync('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(thinMachOWithFunctionStarts([0x200, 0x240, 0x300]));
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(report.functionStarts.single.offsets, [0x200, 0x240, 0x300]);
+    });
+
     test(
       'reads compressed LC_DYLD_CHAINED_FIXUPS import symbols from bytes',
       () {
@@ -1594,6 +1616,22 @@ List<int> thinMachOWithChainedFixupImports(
     ...command,
     ...List.filled(paddingBeforeChainedFixups, 0),
     ...chainedFixups,
+  ];
+}
+
+List<int> thinMachOWithFunctionStarts(List<int> offsets) {
+  final functionStarts = functionStartsBytes(offsets);
+  const commandsSize = 16;
+  final dataOffset = 32 + commandsSize;
+  final command = machoFunctionStartsCommand(
+    dataOffset: dataOffset,
+    dataSize: functionStarts.length,
+  );
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
+    ...functionStarts,
   ];
 }
 
@@ -4008,6 +4046,13 @@ List<int> machoExportsTrieCommand({
   return [...u32(0x80000033), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
 }
 
+List<int> machoFunctionStartsCommand({
+  required int dataOffset,
+  required int dataSize,
+}) {
+  return [...u32(0x26), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
+}
+
 List<int> dyldBindInfoBytes(List<String> symbols) {
   return [
     for (final symbol in symbols) ...[0x40, ...latin1.encode(symbol), 0, 0x90],
@@ -4046,6 +4091,17 @@ List<int> dyldExportsTrieBytes(List<String> symbols) {
     ],
     ...childNodes,
   ];
+}
+
+List<int> functionStartsBytes(List<int> offsets) {
+  final result = <int>[];
+  var previous = 0;
+  for (final offset in offsets) {
+    result.addAll(uleb128(offset - previous));
+    previous = offset;
+  }
+  result.add(0);
+  return result;
 }
 
 List<int> chainedFixupsPayload(

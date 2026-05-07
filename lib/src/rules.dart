@@ -204,6 +204,14 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports LC_DYLD_CHAINED_FIXUPS header and starts metadata.',
     fix: 'No action required.',
   ),
+  'ios.macho.function_starts': RuleDefinition(
+    ruleId: 'ios.macho.function_starts',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O function starts',
+    description: 'Reports LC_FUNCTION_STARTS offset metadata.',
+    fix: 'No action required.',
+  ),
   'ios.permission.camera.empty': RuleDefinition(
     ruleId: 'ios.permission.camera.empty',
     defaultLevel: FindingLevel.failed,
