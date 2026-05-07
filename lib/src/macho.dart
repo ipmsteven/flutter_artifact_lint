@@ -23,6 +23,7 @@ class MachOReport {
     this.dyldExportSymbols = const [],
     this.objcSelectors = const [],
     this.objcClasses = const [],
+    this.objcProtocols = const [],
     this.objcMethods = const [],
   });
 
@@ -46,6 +47,7 @@ class MachOReport {
   final List<MachODyldExportSymbol> dyldExportSymbols;
   final List<MachOObjCSelector> objcSelectors;
   final List<MachOObjCClass> objcClasses;
+  final List<MachOObjCProtocol> objcProtocols;
   final List<MachOObjCMethod> objcMethods;
 }
 
@@ -188,6 +190,18 @@ class MachOObjCClass {
   final String name;
   final String sourceSection;
   final int classAddress;
+}
+
+class MachOObjCProtocol {
+  const MachOObjCProtocol({
+    required this.name,
+    required this.sourceSection,
+    required this.protocolAddress,
+  });
+
+  final String name;
+  final String sourceSection;
+  final int protocolAddress;
 }
 
 class MachOObjCMethod {
@@ -351,6 +365,7 @@ class MachOParser {
       thinReport.dyldExportSymbols,
       thinReport.objcSelectors,
       thinReport.objcClasses,
+      thinReport.objcProtocols,
       thinReport.objcMethods,
     );
   }
@@ -402,6 +417,7 @@ class MachOParser {
     final dyldExportSymbols = <MachODyldExportSymbol>[];
     final objcSelectors = <MachOObjCSelector>[];
     final objcClasses = <MachOObjCClass>[];
+    final objcProtocols = <MachOObjCProtocol>[];
     final objcMethods = <MachOObjCMethod>[];
 
     for (
@@ -442,6 +458,7 @@ class MachOParser {
       dyldExportSymbols.addAll(sliceReport.dyldExportSymbols);
       objcSelectors.addAll(sliceReport.objcSelectors);
       objcClasses.addAll(sliceReport.objcClasses);
+      objcProtocols.addAll(sliceReport.objcProtocols);
       objcMethods.addAll(sliceReport.objcMethods);
     }
 
@@ -466,6 +483,7 @@ class MachOParser {
       dyldExportSymbols,
       objcSelectors,
       objcClasses,
+      objcProtocols,
       objcMethods,
     );
   }
@@ -556,6 +574,13 @@ class MachOParser {
       is64Bit: thinIs64Bit,
       segments: report.segments,
     );
+    final objcProtocols = _readObjCProtocolsFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      is64Bit: thinIs64Bit,
+      segments: report.segments,
+    );
     final objcMethods = _readObjCMethodsFromFile(
       raf,
       fileOffset,
@@ -570,6 +595,7 @@ class MachOParser {
         sectionStrings.isEmpty &&
         objcSelectors.isEmpty &&
         objcClasses.isEmpty &&
+        objcProtocols.isEmpty &&
         objcMethods.isEmpty) {
       return report;
     }
@@ -599,6 +625,7 @@ class MachOParser {
       [...report.dyldExportSymbols, ...dyldExportSymbols],
       [...report.objcSelectors, ...objcSelectors],
       [...report.objcClasses, ...objcClasses],
+      [...report.objcProtocols, ...objcProtocols],
       [...report.objcMethods, ...objcMethods],
     );
   }
@@ -639,6 +666,7 @@ class MachOParser {
     final dyldExportSymbols = <MachODyldExportSymbol>[];
     final objcSelectors = <MachOObjCSelector>[];
     final objcClasses = <MachOObjCClass>[];
+    final objcProtocols = <MachOObjCProtocol>[];
     final objcMethods = <MachOObjCMethod>[];
 
     for (var i = 0; i < architectureCount; i += 1) {
@@ -676,6 +704,7 @@ class MachOParser {
         dyldExportSymbols.addAll(sliceReport.dyldExportSymbols);
         objcSelectors.addAll(sliceReport.objcSelectors);
         objcClasses.addAll(sliceReport.objcClasses);
+        objcProtocols.addAll(sliceReport.objcProtocols);
         objcMethods.addAll(sliceReport.objcMethods);
       }
 
@@ -703,6 +732,7 @@ class MachOParser {
       dyldExportSymbols,
       objcSelectors,
       objcClasses,
+      objcProtocols,
       objcMethods,
     );
   }
@@ -929,6 +959,11 @@ class MachOParser {
       is64Bit: header.is64Bit,
       segments: segments,
     );
+    final objcProtocols = _readObjCProtocolsFromBytes(
+      bytes,
+      is64Bit: header.is64Bit,
+      segments: segments,
+    );
     final objcMethods = _readObjCMethodsFromBytes(
       bytes,
       is64Bit: header.is64Bit,
@@ -956,6 +991,7 @@ class MachOParser {
       dyldExportSymbols: dyldExportSymbols,
       objcSelectors: objcSelectors,
       objcClasses: objcClasses,
+      objcProtocols: objcProtocols,
       objcMethods: objcMethods,
     );
   }
@@ -982,6 +1018,7 @@ MachOReport _deduplicatedReport(
   List<MachODyldExportSymbol> dyldExportSymbols = const [],
   List<MachOObjCSelector> objcSelectors = const [],
   List<MachOObjCClass> objcClasses = const [],
+  List<MachOObjCProtocol> objcProtocols = const [],
   List<MachOObjCMethod> objcMethods = const [],
 ]) {
   final byPath = <String, MachODylib>{};
@@ -1107,6 +1144,12 @@ MachOReport _deduplicatedReport(
         objcClass;
   }
 
+  final byObjCProtocol = <String, MachOObjCProtocol>{};
+  for (final objcProtocol in objcProtocols) {
+    byObjCProtocol['${objcProtocol.sourceSection}|${objcProtocol.name}|${objcProtocol.protocolAddress}'] =
+        objcProtocol;
+  }
+
   final byObjCMethod = <String, MachOObjCMethod>{};
   for (final objcMethod in objcMethods) {
     byObjCMethod['${objcMethod.className}|${objcMethod.sourceSection}|${objcMethod.name}|${objcMethod.methodListAddress}'] =
@@ -1137,6 +1180,7 @@ MachOReport _deduplicatedReport(
     dyldExportSymbols: byDyldExportSymbol.values.toList(),
     objcSelectors: byObjCSelector.values.toList(),
     objcClasses: byObjCClass.values.toList(),
+    objcProtocols: byObjCProtocol.values.toList(),
     objcMethods: byObjCMethod.values.toList(),
   );
 }
@@ -1458,6 +1502,58 @@ List<MachOObjCClass> _readObjCClassesFromFile(
   return classes;
 }
 
+List<MachOObjCProtocol> _readObjCProtocolsFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSegment> segments,
+}) {
+  final protocols = <MachOObjCProtocol>[];
+  final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
+  final stringSections = _stringSections(segments).toList();
+
+  for (final section in _objcProtocolReferenceSections(segments)) {
+    if (!_canReadSection(section, availableLength)) continue;
+
+    final sectionBytes = _readRange(
+      raf,
+      fileOffset + section.fileOffset,
+      section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final protocolAddress = is64Bit
+          ? _readU64(sectionBytes, offset)
+          : _readU32(sectionBytes, offset);
+      final name = _readObjCProtocolNameFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        protocolAddress: protocolAddress,
+      );
+      if (name == null) continue;
+
+      protocols.add(
+        MachOObjCProtocol(
+          name: name,
+          sourceSection: section.displayName,
+          protocolAddress: protocolAddress,
+        ),
+      );
+    }
+  }
+
+  return protocols;
+}
+
 List<MachOObjCMethod> _readObjCMethodsFromFile(
   RandomAccessFile raf,
   int fileOffset,
@@ -1709,6 +1805,53 @@ List<MachOObjCClass> _readObjCClassesFromBytes(
   return classes;
 }
 
+List<MachOObjCProtocol> _readObjCProtocolsFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSegment> segments,
+}) {
+  final protocols = <MachOObjCProtocol>[];
+  final pointerSize = is64Bit ? 8 : 4;
+  final allSections = _allSections(segments).toList();
+  final stringSections = _stringSections(segments).toList();
+
+  for (final section in _objcProtocolReferenceSections(segments)) {
+    if (!_canReadSection(section, bytes.length)) continue;
+
+    final sectionBytes = bytes.sublist(
+      section.fileOffset,
+      section.fileOffset + section.size,
+    );
+    for (
+      var offset = 0;
+      offset + pointerSize <= sectionBytes.length;
+      offset += pointerSize
+    ) {
+      final protocolAddress = is64Bit
+          ? _readU64(sectionBytes, offset)
+          : _readU32(sectionBytes, offset);
+      final name = _readObjCProtocolNameFromBytes(
+        bytes,
+        is64Bit: is64Bit,
+        allSections: allSections,
+        stringSections: stringSections,
+        protocolAddress: protocolAddress,
+      );
+      if (name == null) continue;
+
+      protocols.add(
+        MachOObjCProtocol(
+          name: name,
+          sourceSection: section.displayName,
+          protocolAddress: protocolAddress,
+        ),
+      );
+    }
+  }
+
+  return protocols;
+}
+
 List<MachOObjCSelector> _readObjCSelectorsFromBytes(
   List<int> bytes, {
   required bool is64Bit,
@@ -1844,6 +1987,52 @@ String? _readObjCClassNameFromBytes(
     stringSections: stringSections,
     classAddress: classAddress,
   )?.name;
+}
+
+String? _readObjCProtocolNameFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int protocolAddress,
+}) {
+  final nameAddress = _readPointerAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    allSections,
+    protocolAddress + (is64Bit ? 8 : 4),
+    is64Bit: is64Bit,
+  );
+  if (nameAddress == null) return null;
+
+  return _readCStringAtAddressFromFile(
+    raf,
+    fileOffset,
+    availableLength,
+    stringSections,
+    nameAddress,
+  );
+}
+
+String? _readObjCProtocolNameFromBytes(
+  List<int> bytes, {
+  required bool is64Bit,
+  required List<MachOSection> allSections,
+  required List<MachOSection> stringSections,
+  required int protocolAddress,
+}) {
+  final nameAddress = _readPointerAtAddressFromBytes(
+    bytes,
+    allSections,
+    protocolAddress + (is64Bit ? 8 : 4),
+    is64Bit: is64Bit,
+  );
+  if (nameAddress == null) return null;
+
+  return _readCStringAtAddressFromBytes(bytes, stringSections, nameAddress);
 }
 
 _ObjCClassMetadata? _readObjCClassMetadataFromBytes(
@@ -2540,6 +2729,17 @@ Iterable<MachOSection> _objcCategoryListSections(
   for (final section in _allSections(segments)) {
     if (section.name == '__objc_catlist' ||
         section.name == '__objc_nlcatlist') {
+      yield section;
+    }
+  }
+}
+
+Iterable<MachOSection> _objcProtocolReferenceSections(
+  List<MachOSegment> segments,
+) sync* {
+  for (final section in _allSections(segments)) {
+    if (section.name == '__objc_protolist' ||
+        section.name == '__objc_protorefs') {
       yield section;
     }
   }

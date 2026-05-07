@@ -595,6 +595,49 @@ void main() {
       },
     );
 
+    test('resolves Objective-C protocol references from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCProtocolRefs([
+          'FlutterPlugin',
+          'UIApplicationDelegate',
+        ]),
+      );
+
+      expect(
+        report.objcProtocols.map((protocol) => protocol.name),
+        containsAll(['FlutterPlugin', 'UIApplicationDelegate']),
+      );
+      expect(
+        report.objcProtocols.map((protocol) => protocol.sourceSection),
+        everyElement('__DATA_CONST.__objc_protolist'),
+      );
+    });
+
+    test(
+      'resolves Objective-C protocol references from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithObjCProtocolRefs(
+              ['FlutterStreamHandler'],
+              paddingBeforeData: 4096,
+              sectionName: '__objc_protorefs',
+            ),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(report.objcProtocols.single.name, 'FlutterStreamHandler');
+        expect(
+          report.objcProtocols.single.sourceSection,
+          '__DATA_CONST.__objc_protorefs',
+        );
+      },
+    );
+
     test('resolves Objective-C method lists from bytes', () {
       final report = const MachOParser().parse(
         thinMachOWithObjCMethodList(
@@ -1090,6 +1133,74 @@ List<int> thinMachOWithObjCClassRef(
     ...classData,
     ...classRoData,
     ...classRefData,
+  ];
+}
+
+List<int> thinMachOWithObjCProtocolRefs(
+  List<String> protocolNames, {
+  String sectionName = '__objc_protolist',
+  int paddingBeforeData = 0,
+}) {
+  final nameAddress = 0x100000100;
+  final protocolAddress = 0x100001000;
+  final protocolListAddress = 0x100001800;
+  final namesData = cStringBytes(protocolNames);
+  final nameOffsets = stringOffsets(protocolNames);
+  final protocolData = [
+    for (final nameOffset in nameOffsets)
+      ...objcProtocol64Bytes(nameAddress + nameOffset),
+  ];
+  final protocolListData = [
+    for (var i = 0; i < protocolNames.length; i += 1)
+      ...u64(protocolAddress + i * 64),
+  ];
+  final commandsSize = 3 * (72 + 80);
+  final nameOffset = 32 + commandsSize + paddingBeforeData;
+  final protocolOffset = nameOffset + namesData.length;
+  final protocolListOffset = protocolOffset + protocolData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: nameAddress,
+      fileOffset: nameOffset,
+      size: namesData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: protocolAddress,
+      fileOffset: protocolOffset,
+      size: protocolData.length,
+    ),
+  ]);
+  final protocolListCommand =
+      machoSegment64AddressRangeCommand('__DATA_CONST', [
+        (
+          name: sectionName,
+          segmentName: '__DATA_CONST',
+          address: protocolListAddress,
+          fileOffset: protocolListOffset,
+          size: protocolListData.length,
+        ),
+      ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 3,
+      sizeofcmds:
+          textCommand.length + constCommand.length + protocolListCommand.length,
+    ),
+    ...textCommand,
+    ...constCommand,
+    ...protocolListCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...namesData,
+    ...protocolData,
+    ...protocolListData,
   ];
 }
 
@@ -1722,6 +1833,19 @@ List<int> objcCategory64Bytes({
     ...u64(classMethodsAddress),
     ...u64(0),
     ...u64(0),
+  ];
+}
+
+List<int> objcProtocol64Bytes(int nameAddress) {
+  return [
+    ...u64(0), // isa
+    ...u64(nameAddress),
+    ...u64(0), // protocols
+    ...u64(0), // instance methods
+    ...u64(0), // class methods
+    ...u64(0), // optional instance methods
+    ...u64(0), // optional class methods
+    ...u64(0), // instance properties
   ];
 }
 

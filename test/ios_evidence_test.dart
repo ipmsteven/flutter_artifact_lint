@@ -218,6 +218,31 @@ void main() {
   );
 
   test(
+    'reports parsed Objective-C protocol reference sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithObjCProtocolRefs([
+          'FlutterPlugin',
+        ], sectionName: '__objc_protorefs'),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['FlutterPlugin'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor(['FlutterPlugin'])['FlutterPlugin'],
+        contains('${binary.path}#__DATA_CONST.__objc_protorefs'),
+      );
+    },
+  );
+
+  test(
     'reports parsed Objective-C method list sources for token evidence',
     () async {
       final root = await Directory.systemTemp.createTemp('fal_evidence_');
@@ -535,6 +560,76 @@ List<int> thinMachOWithObjCClassRef(String className) {
   ];
 }
 
+List<int> thinMachOWithObjCProtocolRefs(
+  List<String> protocolNames, {
+  String sectionName = '__objc_protolist',
+}) {
+  final nameAddress = 0x100000100;
+  final protocolAddress = 0x100001000;
+  final protocolListAddress = 0x100001800;
+  final namesData = cStringBytes(protocolNames);
+  final nameOffsets = stringOffsets(protocolNames);
+  final protocolData = [
+    for (final nameOffset in nameOffsets)
+      ...objcProtocol64Bytes(nameAddress + nameOffset),
+  ];
+  final protocolListData = [
+    for (var i = 0; i < protocolNames.length; i += 1)
+      ...u64(protocolAddress + i * 64),
+  ];
+  final commandsSize = 3 * (72 + 80);
+  final nameOffset = 32 + commandsSize;
+  final protocolOffset = nameOffset + namesData.length;
+  final protocolListOffset = protocolOffset + protocolData.length;
+
+  final textCommand = machoSegment64AddressCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: nameAddress,
+      fileOffset: nameOffset,
+      size: namesData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: protocolAddress,
+      fileOffset: protocolOffset,
+      size: protocolData.length,
+    ),
+  ]);
+  final protocolListCommand = machoSegment64AddressCommand('__DATA_CONST', [
+    (
+      name: sectionName,
+      segmentName: '__DATA_CONST',
+      address: protocolListAddress,
+      fileOffset: protocolListOffset,
+      size: protocolListData.length,
+    ),
+  ]);
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(3),
+    ...u32(
+      textCommand.length + constCommand.length + protocolListCommand.length,
+    ),
+    ...u32(0),
+    ...u32(0),
+    ...textCommand,
+    ...constCommand,
+    ...protocolListCommand,
+    ...namesData,
+    ...protocolData,
+    ...protocolListData,
+  ];
+}
+
 List<int> thinMachOWithObjCMethodList({
   required String className,
   required List<String> methodNames,
@@ -812,6 +907,19 @@ List<int> objcClassRo64Bytes(int nameAddress, {int baseMethodsAddress = 0}) {
     ...u64(0),
     ...u64(nameAddress),
     ...u64(baseMethodsAddress),
+  ];
+}
+
+List<int> objcProtocol64Bytes(int nameAddress) {
+  return [
+    ...u64(0),
+    ...u64(nameAddress),
+    ...u64(0),
+    ...u64(0),
+    ...u64(0),
+    ...u64(0),
+    ...u64(0),
+    ...u64(0),
   ];
 }
 

@@ -134,8 +134,9 @@ currently reports only the linkedit offset and size; it does not validate the
 signature blob or parse embedded entitlements.
 
 Segment and section names are parsed from `LC_SEGMENT` and `LC_SEGMENT_64` as
-structured parser metadata. Section, symbol, selector, class, and method names
-can contribute token evidence with the parsed Mach-O source attached.
+structured parser metadata. Section, symbol, selector, class, protocol, and
+method names can contribute token evidence with the parsed Mach-O source
+attached.
 Symbol table metadata and symbol names are parsed from `LC_SYMTAB` when the
 symbol and string tables are present in the artifact.
 Dynamic symbol table ranges and indirect-symbol table metadata are parsed from
@@ -156,6 +157,9 @@ ranges are available.
 Objective-C class references are resolved from `__objc_classrefs` and
 `__objc_classlist` through `class_t` and `class_ro_t` metadata to class-name
 strings when the relevant sections are present.
+Objective-C protocol references are resolved from `__objc_protolist` and
+`__objc_protorefs` through `protocol_t` metadata to protocol-name strings when
+the relevant sections are present.
 Objective-C big and small method lists are resolved from
 `class_ro_t.baseMethods` and local relative method-list lists through
 `method_list_t` entries back to `__objc_methname` strings when the relevant
