@@ -116,6 +116,8 @@ metadata.
 
 `ios.macho.function_starts` reports `LC_FUNCTION_STARTS` offset metadata.
 
+`ios.macho.data_in_code` reports `LC_DATA_IN_CODE` entry metadata.
+
 `ios.signing.unavailable` reports that signing state is unavailable for an unsigned artifact.
 
 `ios.signing.present` reports that signing data appears to be present.
@@ -146,6 +148,8 @@ embedded entitlements. `LC_ENCRYPTION_INFO` reports FairPlay encryption offsets
 and crypt id metadata; it does not decrypt or validate encrypted content.
 `LC_MAIN` reports the executable entry offset and stack size.
 `LC_FUNCTION_STARTS` is decoded from ULEB128 deltas into function start offsets.
+`LC_DATA_IN_CODE` is decoded into non-instruction ranges in `__text`, including
+data and jump-table entry kinds.
 
 Segment and section names are parsed from `LC_SEGMENT` and `LC_SEGMENT_64` as
 structured parser metadata. Section, symbol, selector, class, protocol, and

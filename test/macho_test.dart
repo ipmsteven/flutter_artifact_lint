@@ -502,6 +502,39 @@ void main() {
       expect(report.functionStarts.single.offsets, [0x200, 0x240, 0x300]);
     });
 
+    test('reads LC_DATA_IN_CODE entries from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithDataInCode([
+          (offset: 0x20, length: 8, kind: 1),
+          (offset: 0x80, length: 16, kind: 4),
+        ]),
+      );
+
+      expect(report.dataInCode, hasLength(1));
+      expect(report.dataInCode.single.entries, hasLength(2));
+      expect(report.dataInCode.single.entries.first.offset, 0x20);
+      expect(report.dataInCode.single.entries.first.length, 8);
+      expect(report.dataInCode.single.entries.first.kindName, 'data');
+      expect(report.dataInCode.single.entries.last.kindName, 'jump table 32');
+    });
+
+    test('reads LC_DATA_IN_CODE entries from the file-backed parser', () {
+      final root = Directory.systemTemp.createTempSync('fal_macho_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final file = File('${root.path}/Runner')
+        ..writeAsBytesSync(
+          thinMachOWithDataInCode([
+            (offset: 0x40, length: 4, kind: 2),
+          ], paddingBeforeDataInCode: 4096),
+        );
+
+      final report = const MachOParser().parseFile(file);
+
+      expect(report.dataInCode.single.entries.single.offset, 0x40);
+      expect(report.dataInCode.single.entries.single.kindName, 'jump table 8');
+    });
+
     test(
       'reads compressed LC_DYLD_CHAINED_FIXUPS import symbols from bytes',
       () {
@@ -1632,6 +1665,26 @@ List<int> thinMachOWithFunctionStarts(List<int> offsets) {
     ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
     ...command,
     ...functionStarts,
+  ];
+}
+
+List<int> thinMachOWithDataInCode(
+  List<({int offset, int length, int kind})> entries, {
+  int paddingBeforeDataInCode = 0,
+}) {
+  final dataInCode = dataInCodeBytes(entries);
+  const commandsSize = 16;
+  final dataOffset = 32 + commandsSize + paddingBeforeDataInCode;
+  final command = machoDataInCodeCommand(
+    dataOffset: dataOffset,
+    dataSize: dataInCode.length,
+  );
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
+    ...List.filled(paddingBeforeDataInCode, 0),
+    ...dataInCode,
   ];
 }
 
@@ -4053,6 +4106,13 @@ List<int> machoFunctionStartsCommand({
   return [...u32(0x26), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
 }
 
+List<int> machoDataInCodeCommand({
+  required int dataOffset,
+  required int dataSize,
+}) {
+  return [...u32(0x29), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
+}
+
 List<int> dyldBindInfoBytes(List<String> symbols) {
   return [
     for (final symbol in symbols) ...[0x40, ...latin1.encode(symbol), 0, 0x90],
@@ -4090,6 +4150,16 @@ List<int> dyldExportsTrieBytes(List<String> symbols) {
       ...rootOffsets[i],
     ],
     ...childNodes,
+  ];
+}
+
+List<int> dataInCodeBytes(List<({int offset, int length, int kind})> entries) {
+  return [
+    for (final entry in entries) ...[
+      ...u32(entry.offset),
+      ...u16(entry.length),
+      ...u16(entry.kind),
+    ],
   ];
 }
 

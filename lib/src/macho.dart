@@ -14,6 +14,7 @@ class MachOReport {
     this.encryptionInfos = const [],
     this.entryPoints = const [],
     this.functionStarts = const [],
+    this.dataInCode = const [],
     this.segments = const [],
     this.symbolTables = const [],
     this.symbols = const [],
@@ -47,6 +48,7 @@ class MachOReport {
   final List<MachOEncryptionInfo> encryptionInfos;
   final List<MachOEntryPoint> entryPoints;
   final List<MachOFunctionStarts> functionStarts;
+  final List<MachODataInCode> dataInCode;
   final List<MachOSegment> segments;
   final List<MachOSymbolTable> symbolTables;
   final List<MachOSymbol> symbols;
@@ -183,6 +185,39 @@ class MachOFunctionStarts {
   final int dataOffset;
   final int dataSize;
   final List<int> offsets;
+}
+
+class MachODataInCode {
+  const MachODataInCode({
+    required this.dataOffset,
+    required this.dataSize,
+    this.entries = const [],
+  });
+
+  final int dataOffset;
+  final int dataSize;
+  final List<MachODataInCodeEntry> entries;
+}
+
+class MachODataInCodeEntry {
+  const MachODataInCodeEntry({
+    required this.offset,
+    required this.length,
+    required this.kind,
+  });
+
+  final int offset;
+  final int length;
+  final int kind;
+
+  String get kindName => switch (kind) {
+    1 => 'data',
+    2 => 'jump table 8',
+    3 => 'jump table 16',
+    4 => 'jump table 32',
+    5 => 'absolute jump table 32',
+    _ => 'kind $kind',
+  };
 }
 
 class MachOSegment {
@@ -528,6 +563,7 @@ class MachOParser {
       thinReport.encryptionInfos,
       thinReport.entryPoints,
       thinReport.functionStarts,
+      thinReport.dataInCode,
       thinReport.segments,
       thinReport.symbolTables,
       thinReport.symbols,
@@ -589,6 +625,7 @@ class MachOParser {
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
     final functionStarts = <MachOFunctionStarts>[];
+    final dataInCode = <MachODataInCode>[];
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
@@ -639,6 +676,7 @@ class MachOParser {
       encryptionInfos.addAll(sliceReport.encryptionInfos);
       entryPoints.addAll(sliceReport.entryPoints);
       functionStarts.addAll(sliceReport.functionStarts);
+      dataInCode.addAll(sliceReport.dataInCode);
       segments.addAll(sliceReport.segments);
       symbolTables.addAll(sliceReport.symbolTables);
       symbols.addAll(sliceReport.symbols);
@@ -673,6 +711,7 @@ class MachOParser {
       encryptionInfos,
       entryPoints,
       functionStarts,
+      dataInCode,
       segments,
       symbolTables,
       symbols,
@@ -767,6 +806,12 @@ class MachOParser {
       availableLength,
       functionStarts: report.functionStarts,
     );
+    final dataInCode = _readDataInCodeFromFile(
+      raf,
+      fileOffset,
+      availableLength,
+      dataInCode: report.dataInCode,
+    );
     final dyldExportSymbols = _readDyldExportSymbolsFromFile(
       raf,
       fileOffset,
@@ -857,6 +902,7 @@ class MachOParser {
         dyldBindSymbols.isEmpty &&
         chainedFixupBindSymbols.isEmpty &&
         functionStarts.isEmpty &&
+        dataInCode.isEmpty &&
         dyldExportSymbols.isEmpty &&
         sectionStrings.isEmpty &&
         swiftTypes.isEmpty &&
@@ -884,6 +930,7 @@ class MachOParser {
       report.encryptionInfos,
       report.entryPoints,
       functionStarts,
+      dataInCode,
       report.segments,
       report.symbolTables,
       [...report.symbols, ...symbols],
@@ -938,6 +985,7 @@ class MachOParser {
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
     final functionStarts = <MachOFunctionStarts>[];
+    final dataInCode = <MachODataInCode>[];
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
@@ -985,6 +1033,7 @@ class MachOParser {
         encryptionInfos.addAll(sliceReport.encryptionInfos);
         entryPoints.addAll(sliceReport.entryPoints);
         functionStarts.addAll(sliceReport.functionStarts);
+        dataInCode.addAll(sliceReport.dataInCode);
         segments.addAll(sliceReport.segments);
         symbolTables.addAll(sliceReport.symbolTables);
         symbols.addAll(sliceReport.symbols);
@@ -1022,6 +1071,7 @@ class MachOParser {
       encryptionInfos,
       entryPoints,
       functionStarts,
+      dataInCode,
       segments,
       symbolTables,
       symbols,
@@ -1064,6 +1114,7 @@ class MachOParser {
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
     final functionStarts = <MachOFunctionStarts>[];
+    final dataInCode = <MachODataInCode>[];
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
@@ -1263,6 +1314,15 @@ class MachOParser {
         );
       }
 
+      if (command == _lcDataInCode && commandSize >= 16) {
+        dataInCode.add(
+          MachODataInCode(
+            dataOffset: _readU32(bytes, offset + 8),
+            dataSize: _readU32(bytes, offset + 12),
+          ),
+        );
+      }
+
       offset += commandSize;
     }
 
@@ -1286,6 +1346,10 @@ class MachOParser {
     final functionStartMetadata = _readFunctionStartsFromBytes(
       bytes,
       functionStarts: functionStarts,
+    );
+    final dataInCodeMetadata = _readDataInCodeFromBytes(
+      bytes,
+      dataInCode: dataInCode,
     );
     final dyldExportSymbols = _readDyldExportSymbolsFromBytes(
       bytes,
@@ -1349,6 +1413,7 @@ class MachOParser {
       encryptionInfos: encryptionInfos,
       entryPoints: entryPoints,
       functionStarts: functionStartMetadata,
+      dataInCode: dataInCodeMetadata,
       segments: segments,
       symbolTables: symbolTables,
       symbols: symbols,
@@ -1385,6 +1450,7 @@ MachOReport _deduplicatedReport(
   List<MachOEncryptionInfo> encryptionInfos = const [],
   List<MachOEntryPoint> entryPoints = const [],
   List<MachOFunctionStarts> functionStarts = const [],
+  List<MachODataInCode> dataInCode = const [],
   List<MachOSegment> segments = const [],
   List<MachOSymbolTable> symbolTables = const [],
   List<MachOSymbol> symbols = const [],
@@ -1468,6 +1534,14 @@ MachOReport _deduplicatedReport(
   for (final functionStart in functionStarts) {
     byFunctionStarts['${functionStart.dataOffset}|${functionStart.dataSize}|${functionStart.offsets.join(",")}'] =
         functionStart;
+  }
+
+  final byDataInCode = <String, MachODataInCode>{};
+  for (final data in dataInCode) {
+    final entriesKey = data.entries
+        .map((entry) => '${entry.offset}:${entry.length}:${entry.kind}')
+        .join(',');
+    byDataInCode['${data.dataOffset}|${data.dataSize}|$entriesKey'] = data;
   }
 
   final sectionsBySegment = <String, Map<String, MachOSection>>{};
@@ -1613,6 +1687,7 @@ MachOReport _deduplicatedReport(
     encryptionInfos: byEncryptionInfo.values.toList(),
     entryPoints: byEntryPoint.values.toList(),
     functionStarts: byFunctionStarts.values.toList(),
+    dataInCode: byDataInCode.values.toList(),
     segments: [
       for (final entry in sectionsBySegment.entries)
         MachOSegment(name: entry.key, sections: entry.value.values.toList()),
@@ -6579,6 +6654,79 @@ List<MachOFunctionStarts> _readFunctionStartsFromBytes(
   return result;
 }
 
+List<MachODataInCode> _readDataInCodeFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength, {
+  required List<MachODataInCode> dataInCode,
+}) {
+  final result = <MachODataInCode>[];
+  for (final data in dataInCode) {
+    if (!_canReadDyldInfoStream(
+      data.dataOffset,
+      data.dataSize,
+      availableLength,
+    )) {
+      result.add(data);
+      continue;
+    }
+
+    result.add(
+      MachODataInCode(
+        dataOffset: data.dataOffset,
+        dataSize: data.dataSize,
+        entries: _parseDataInCodeEntries(
+          _readRange(raf, fileOffset + data.dataOffset, data.dataSize),
+        ),
+      ),
+    );
+  }
+  return result;
+}
+
+List<MachODataInCode> _readDataInCodeFromBytes(
+  List<int> bytes, {
+  required List<MachODataInCode> dataInCode,
+}) {
+  final result = <MachODataInCode>[];
+  for (final data in dataInCode) {
+    if (!_canReadDyldInfoStream(data.dataOffset, data.dataSize, bytes.length)) {
+      result.add(data);
+      continue;
+    }
+
+    result.add(
+      MachODataInCode(
+        dataOffset: data.dataOffset,
+        dataSize: data.dataSize,
+        entries: _parseDataInCodeEntries(
+          bytes.sublist(data.dataOffset, data.dataOffset + data.dataSize),
+        ),
+      ),
+    );
+  }
+  return result;
+}
+
+List<MachODataInCodeEntry> _parseDataInCodeEntries(List<int> bytes) {
+  final entries = <MachODataInCodeEntry>[];
+  for (
+    var offset = 0;
+    offset + _dataInCodeEntrySize <= bytes.length &&
+        entries.length < _maxDataInCodeEntryCount;
+    offset += _dataInCodeEntrySize
+  ) {
+    entries.add(
+      MachODataInCodeEntry(
+        offset: _readU32(bytes, offset),
+        length: _readU16(bytes, offset + 4),
+        kind: _readU16(bytes, offset + 6),
+      ),
+    );
+  }
+  return entries;
+}
+
 List<int> _parseFunctionStartOffsets(List<int> bytes) {
   final offsets = <int>[];
   var cursor = 0;
@@ -7343,8 +7491,10 @@ const _dyldChainedImportAddend = 2;
 const _dyldChainedImportAddend64 = 3;
 const _dyldChainedSymbolsUncompressed = 0;
 const _dyldChainedSymbolsZlibCompressed = 1;
+const _dataInCodeEntrySize = 8;
 const _maxChainedFixupPageCount = 1 << 20;
 const _maxChainedFixupSegmentCount = 4096;
+const _maxDataInCodeEntryCount = 1 << 20;
 const _maxDyldExportTrieNodes = 8192;
 const _maxDyldImportCount = 1 << 20;
 const _maxFatArchTableBytes = 64 * 1024;
@@ -7396,6 +7546,7 @@ const _lcDyldInfoOnly = 0x80000022;
 const _lcLoadUpwardDylib = 0x80000023;
 const _lcFunctionStarts = 0x26;
 const _lcMain = 0x80000028;
+const _lcDataInCode = 0x29;
 const _lcSourceVersion = 0x2a;
 const _lcEncryptionInfo64 = 0x2c;
 const _lcBuildVersion = 0x32;

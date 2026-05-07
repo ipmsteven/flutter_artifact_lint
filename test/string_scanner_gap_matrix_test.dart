@@ -187,6 +187,23 @@ void main() {
       expect(finding.message, contains('first offset 256'));
       expect(finding.message, contains('last offset 416'));
     });
+
+    test('reports data-in-code metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOWithDataInCode([
+          (offset: 0x20, length: 8, kind: 1),
+          (offset: 0x80, length: 16, kind: 4),
+        ]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.data_in_code',
+      );
+
+      expect(finding.message, contains('entries 2'));
+      expect(finding.message, contains('data'));
+      expect(finding.message, contains('jump table 32'));
+    });
   });
 
   group('Mach-O architecture parser acceptance', () {
@@ -458,6 +475,31 @@ List<int> _machOWithFunctionStarts(List<int> offsets) {
     ..._u32(dataOffset),
     ..._u32(functionStarts.length),
     ...functionStarts,
+  ];
+}
+
+List<int> _machOWithDataInCode(
+  List<({int offset, int length, int kind})> entries,
+) {
+  final dataInCode = _dataInCodeBytes(entries);
+  final dataOffset = 32 + 16;
+  return [
+    ..._machOHeaderBytes(ncmds: 1, sizeofcmds: 16),
+    ..._u32(0x29),
+    ..._u32(16),
+    ..._u32(dataOffset),
+    ..._u32(dataInCode.length),
+    ...dataInCode,
+  ];
+}
+
+List<int> _dataInCodeBytes(List<({int offset, int length, int kind})> entries) {
+  return [
+    for (final entry in entries) ...[
+      ..._u32(entry.offset),
+      ..._u16(entry.length),
+      ..._u16(entry.kind),
+    ],
   ];
 }
 

@@ -212,6 +212,14 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports LC_FUNCTION_STARTS offset metadata.',
     fix: 'No action required.',
   ),
+  'ios.macho.data_in_code': RuleDefinition(
+    ruleId: 'ios.macho.data_in_code',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O data in code',
+    description: 'Reports LC_DATA_IN_CODE entry metadata.',
+    fix: 'No action required.',
+  ),
   'ios.permission.camera.empty': RuleDefinition(
     ruleId: 'ios.permission.camera.empty',
     defaultLevel: FindingLevel.failed,

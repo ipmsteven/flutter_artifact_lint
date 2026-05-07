@@ -739,6 +739,7 @@ List<LintFinding> _machoMetadataInfo(EvidenceReport evidence) {
       MachOMetadataKind.entryPoint => 'ios.macho.entry_point',
       MachOMetadataKind.chainedFixups => 'ios.macho.chained_fixups',
       MachOMetadataKind.functionStarts => 'ios.macho.function_starts',
+      MachOMetadataKind.dataInCode => 'ios.macho.data_in_code',
     };
     return buildFinding(
       ruleId,

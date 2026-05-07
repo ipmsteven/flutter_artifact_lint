@@ -66,6 +66,7 @@ enum MachOMetadataKind {
   entryPoint,
   chainedFixups,
   functionStarts,
+  dataInCode,
 }
 
 class MachOMetadataEvidence {
@@ -243,6 +244,16 @@ class IosEvidenceExtractor {
         );
       }
 
+      for (final dataInCode in machoReport.dataInCode) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.dataInCode,
+            sourcePath: entity.path,
+            value: _dataInCodeValue(dataInCode),
+          ),
+        );
+      }
+
       for (final sectionString in machoReport.sectionStrings) {
         for (final token in _matchedTokens(sectionString.value, tokens)) {
           addEvidence(token, '${entity.path}#${sectionString.sectionName}');
@@ -408,6 +419,17 @@ String _functionStartsValue(MachOFunctionStarts functionStarts) {
     'data size ${functionStarts.dataSize}',
     if (offsets.isNotEmpty) 'first offset ${offsets.first}',
     if (offsets.isNotEmpty) 'last offset ${offsets.last}',
+  ].join('; ');
+}
+
+String _dataInCodeValue(MachODataInCode dataInCode) {
+  final kindNames =
+      dataInCode.entries.map((entry) => entry.kindName).toSet().toList()
+        ..sort();
+  return [
+    'entries ${dataInCode.entries.length}',
+    'data size ${dataInCode.dataSize}',
+    if (kindNames.isNotEmpty) 'kinds ${kindNames.join(', ')}',
   ].join('; ');
 }
 
