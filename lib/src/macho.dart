@@ -3077,12 +3077,18 @@ List<MachODyldBindSymbol> _parseChainedFixupBindSymbols(List<int> bytes) {
   final importsCount = _readU32(bytes, 16);
   final importsFormat = _readU32(bytes, 20);
   final symbolsFormat = _readU32(bytes, 24);
-  if (symbolsFormat != 0 ||
-      importsCount <= 0 ||
+  if (importsCount <= 0 ||
       importsCount > _maxDyldImportCount ||
       !_rangeWithin(symbolsOffset, 1, bytes.length)) {
     return const [];
   }
+
+  final symbolBytes = _chainedFixupSymbolBytes(
+    bytes,
+    offset: symbolsOffset,
+    format: symbolsFormat,
+  );
+  if (symbolBytes == null || symbolBytes.isEmpty) return const [];
 
   final entrySize = switch (importsFormat) {
     _dyldChainedImport => 4,
@@ -3107,10 +3113,13 @@ List<MachODyldBindSymbol> _parseChainedFixupBindSymbols(List<int> bytes) {
         (_readU64(bytes, entryOffset) >> 32) & 0xffffffff,
       _ => 0,
     };
-    final nameStart = symbolsOffset + nameOffset;
-    if (!_rangeWithin(nameStart, 1, bytes.length)) continue;
+    if (!_rangeWithin(nameOffset, 1, symbolBytes.length)) continue;
 
-    final name = _readNullTerminatedString(bytes, nameStart, bytes.length);
+    final name = _readNullTerminatedString(
+      symbolBytes,
+      nameOffset,
+      symbolBytes.length,
+    );
     if (name.isEmpty) continue;
 
     symbols.add(
@@ -3119,6 +3128,31 @@ List<MachODyldBindSymbol> _parseChainedFixupBindSymbols(List<int> bytes) {
   }
 
   return symbols;
+}
+
+List<int>? _chainedFixupSymbolBytes(
+  List<int> bytes, {
+  required int offset,
+  required int format,
+}) {
+  if (!_rangeWithin(offset, 1, bytes.length)) return null;
+
+  final encoded = bytes.sublist(offset);
+  return switch (format) {
+    _dyldChainedSymbolsUncompressed => encoded,
+    _dyldChainedSymbolsZlibCompressed => _zlibDecodeDyldInfo(encoded),
+    _ => null,
+  };
+}
+
+List<int>? _zlibDecodeDyldInfo(List<int> bytes) {
+  try {
+    final decoded = zlib.decode(bytes);
+    if (decoded.length > _maxDyldInfoBytes) return null;
+    return decoded;
+  } on FormatException {
+    return null;
+  }
 }
 
 List<MachODyldExportSymbol> _parseDyldExportTrieSymbols(List<int> bytes) {
@@ -3469,6 +3503,8 @@ const _bindOpcodeDoBindUlebTimesSkippingUleb = 0xc0;
 const _dyldChainedImport = 1;
 const _dyldChainedImportAddend = 2;
 const _dyldChainedImportAddend64 = 3;
+const _dyldChainedSymbolsUncompressed = 0;
+const _dyldChainedSymbolsZlibCompressed = 1;
 const _maxDyldExportTrieNodes = 8192;
 const _maxDyldImportCount = 1 << 20;
 const _maxFatArchTableBytes = 64 * 1024;

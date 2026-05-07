@@ -367,6 +367,34 @@ void main() {
     });
 
     test(
+      'reads compressed LC_DYLD_CHAINED_FIXUPS import symbols from bytes',
+      () {
+        final report = const MachOParser().parse(
+          thinMachOWithChainedFixupImports([
+            r'_OBJC_CLASS_$_UNUserNotificationCenter',
+          ], symbolsFormat: 1),
+        );
+
+        expect(
+          report.dyldBindSymbols.map((symbol) => symbol.name),
+          contains(r'_OBJC_CLASS_$_UNUserNotificationCenter'),
+        );
+      },
+    );
+
+    test('ignores malformed compressed LC_DYLD_CHAINED_FIXUPS symbols', () {
+      final report = const MachOParser().parse(
+        thinMachOWithChainedFixupImports(
+          [r'_OBJC_CLASS_$_UNUserNotificationCenter'],
+          corruptCompressedSymbols: true,
+          symbolsFormat: 1,
+        ),
+      );
+
+      expect(report.dyldBindSymbols, isEmpty);
+    });
+
+    test(
       'reads LC_DYLD_CHAINED_FIXUPS import symbols from the file-backed parser',
       () async {
         final root = await Directory.systemTemp.createTemp('fal_macho_');
@@ -836,11 +864,15 @@ List<int> thinMachOWithDyldBindSymbols(
 List<int> thinMachOWithChainedFixupImports(
   List<String> symbols, {
   int importFormat = 1,
+  int symbolsFormat = 0,
+  bool corruptCompressedSymbols = false,
   int paddingBeforeChainedFixups = 0,
 }) {
   final chainedFixups = chainedFixupsPayload(
     symbols,
     importFormat: importFormat,
+    corruptCompressedSymbols: corruptCompressedSymbols,
+    symbolsFormat: symbolsFormat,
   );
   const commandsSize = 16;
   final dataOffset = 32 + commandsSize + paddingBeforeChainedFixups;
@@ -1533,8 +1565,17 @@ List<int> dyldExportsTrieBytes(List<String> symbols) {
 List<int> chainedFixupsPayload(
   List<String> symbols, {
   required int importFormat,
+  int symbolsFormat = 0,
+  bool corruptCompressedSymbols = false,
 }) {
-  final symbolStrings = cStringBytes(symbols);
+  final symbolStrings = switch (symbolsFormat) {
+    0 => cStringBytes(symbols),
+    1 =>
+      corruptCompressedSymbols
+          ? [0x78, 0x9c, 0x01]
+          : zlib.encode(cStringBytes(symbols)),
+    _ => throw ArgumentError.value(symbolsFormat, 'symbolsFormat'),
+  };
   final symbolOffsets = stringOffsets(symbols);
   final entrySize = switch (importFormat) {
     1 => 4,
@@ -1553,7 +1594,7 @@ List<int> chainedFixupsPayload(
     ...u32(symbolsOffset),
     ...u32(symbols.length),
     ...u32(importFormat),
-    ...u32(0), // uncompressed symbols
+    ...u32(symbolsFormat),
     for (final symbolOffset in symbolOffsets)
       ...chainedImportEntry(
         importFormat: importFormat,
