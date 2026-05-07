@@ -171,9 +171,9 @@ Objective-C protocol references are resolved from `__objc_protolist`,
 through `protocol_t` metadata to protocol-name strings when the relevant
 sections are present.
 Objective-C big and small method lists are resolved from
-`class_ro_t.baseMethods` and local relative method-list lists through
-`method_list_t` entries back to `__objc_methname` strings when the relevant
-Objective-C metadata sections are present.
+class and metaclass `class_ro_t.baseMethods` and local relative method-list
+lists through `method_list_t` entries back to `__objc_methname` strings when
+the relevant Objective-C metadata sections are present.
 Objective-C ivar and property lists are resolved from `class_ro_t.ivars`,
 class and metaclass `class_ro_t.baseProperties`,
 `category_t.instanceProperties`, `category_t.classProperties`,

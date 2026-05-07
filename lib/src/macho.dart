@@ -2174,20 +2174,58 @@ List<MachOObjCMethod> _readObjCMethodsFromFile(
         stringSections: stringSections,
         classAddress: classAddress,
       );
-      if (metadata == null || metadata.baseMethodsAddress == 0) continue;
+      if (metadata == null) continue;
 
-      methods.addAll(
-        _readObjCMethodListsFromFile(
+      if (metadata.baseMethodsAddress != 0) {
+        methods.addAll(
+          _readObjCMethodListsFromFile(
+            raf,
+            fileOffset,
+            availableLength,
+            is64Bit: is64Bit,
+            allSections: allSections,
+            stringSections: stringSections,
+            className: metadata.name,
+            methodListAddress: metadata.baseMethodsAddress,
+          ),
+        );
+      }
+      final metaclassAddress = _readPointerAtAddressFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        allSections,
+        classAddress,
+        is64Bit: is64Bit,
+      );
+      if (metaclassAddress != null &&
+          metaclassAddress != 0 &&
+          metaclassAddress != classAddress) {
+        final metaclassMetadata = _readObjCClassMetadataFromFile(
           raf,
           fileOffset,
           availableLength,
           is64Bit: is64Bit,
           allSections: allSections,
           stringSections: stringSections,
-          className: metadata.name,
-          methodListAddress: metadata.baseMethodsAddress,
-        ),
-      );
+          classAddress: metaclassAddress,
+        );
+        if (metaclassMetadata != null &&
+            metaclassMetadata.baseMethodsAddress != 0) {
+          methods.addAll(
+            _readObjCMethodListsFromFile(
+              raf,
+              fileOffset,
+              availableLength,
+              is64Bit: is64Bit,
+              allSections: allSections,
+              stringSections: stringSections,
+              className: metadata.name,
+              methodListAddress: metaclassMetadata.baseMethodsAddress,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -2753,18 +2791,50 @@ List<MachOObjCMethod> _readObjCMethodsFromBytes(
         stringSections: stringSections,
         classAddress: classAddress,
       );
-      if (metadata == null || metadata.baseMethodsAddress == 0) continue;
+      if (metadata == null) continue;
 
-      methods.addAll(
-        _readObjCMethodListsFromBytes(
+      if (metadata.baseMethodsAddress != 0) {
+        methods.addAll(
+          _readObjCMethodListsFromBytes(
+            bytes,
+            is64Bit: is64Bit,
+            allSections: allSections,
+            stringSections: stringSections,
+            className: metadata.name,
+            methodListAddress: metadata.baseMethodsAddress,
+          ),
+        );
+      }
+      final metaclassAddress = _readPointerAtAddressFromBytes(
+        bytes,
+        allSections,
+        classAddress,
+        is64Bit: is64Bit,
+      );
+      if (metaclassAddress != null &&
+          metaclassAddress != 0 &&
+          metaclassAddress != classAddress) {
+        final metaclassMetadata = _readObjCClassMetadataFromBytes(
           bytes,
           is64Bit: is64Bit,
           allSections: allSections,
           stringSections: stringSections,
-          className: metadata.name,
-          methodListAddress: metadata.baseMethodsAddress,
-        ),
-      );
+          classAddress: metaclassAddress,
+        );
+        if (metaclassMetadata != null &&
+            metaclassMetadata.baseMethodsAddress != 0) {
+          methods.addAll(
+            _readObjCMethodListsFromBytes(
+              bytes,
+              is64Bit: is64Bit,
+              allSections: allSections,
+              stringSections: stringSections,
+              className: metadata.name,
+              methodListAddress: metaclassMetadata.baseMethodsAddress,
+            ),
+          );
+        }
+      }
     }
   }
 

@@ -933,6 +933,24 @@ void main() {
       );
     });
 
+    test('resolves Objective-C metaclass method lists from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithObjCMetaclassMethodList(
+          className: 'RunnerViewController',
+          methodNames: ['sharedRegistrar'],
+        ),
+      );
+
+      expect(report.objcMethods.map((method) => method.name), [
+        'sharedRegistrar',
+      ]);
+      expect(report.objcMethods.single.className, 'RunnerViewController');
+      expect(
+        report.objcMethods.single.sourceSection,
+        '__DATA_CONST.__objc_const',
+      );
+    });
+
     test(
       'resolves Objective-C small method lists from the file-backed parser',
       () async {
@@ -2860,6 +2878,118 @@ List<int> thinMachOWithObjCMetaclassPropertyList({
     ...classRoData,
     ...metaclassRoData,
     ...propertyListData,
+    ...classListData,
+  ];
+}
+
+List<int> thinMachOWithObjCMetaclassMethodList({
+  required String className,
+  required List<String> methodNames,
+  int paddingBeforeData = 0,
+}) {
+  final classNameAddress = 0x100000100;
+  final methodNameAddress = 0x100000500;
+  final classAddress = 0x100001000;
+  final metaclassAddress = classAddress + 40;
+  final classRoAddress = 0x100001800;
+  final classListAddress = 0x100002800;
+  final classNameData = cStringBytes([className]);
+  final methodNameData = cStringBytes(methodNames);
+  final methodNameOffsets = stringOffsets(methodNames);
+  final classData = objcClass64Bytes(
+    classRoAddress,
+    isaAddress: metaclassAddress,
+  );
+  final metaclassRoAddress =
+      classRoAddress + objcClassRo64Bytes(classNameAddress).length;
+  final methodListAddress = metaclassRoAddress + 40;
+  final methodListData = objcMethodList64Bytes([
+    for (final methodNameOffset in methodNameOffsets)
+      methodNameAddress + methodNameOffset,
+  ]);
+  final classRoData = objcClassRo64Bytes(classNameAddress);
+  final metaclassData = objcClass64Bytes(metaclassRoAddress);
+  final metaclassRoData = objcClassRo64Bytes(
+    classNameAddress,
+    baseMethodsAddress: methodListAddress,
+  );
+  final classListData = u64(classAddress);
+  final commandsSize = (72 + 2 * 80) + 3 * (72 + 80);
+  final classNameOffset = 32 + commandsSize + paddingBeforeData;
+  final methodNameOffset = classNameOffset + classNameData.length;
+  final classOffset = methodNameOffset + methodNameData.length;
+  final classRoOffset = classOffset + classData.length + metaclassData.length;
+  final classListOffset =
+      classRoOffset +
+      classRoData.length +
+      metaclassRoData.length +
+      methodListData.length;
+
+  final textCommand = machoSegment64AddressRangeCommand('__TEXT', [
+    (
+      name: '__objc_classname',
+      segmentName: '__TEXT',
+      address: classNameAddress,
+      fileOffset: classNameOffset,
+      size: classNameData.length,
+    ),
+    (
+      name: '__objc_methname',
+      segmentName: '__TEXT',
+      address: methodNameAddress,
+      fileOffset: methodNameOffset,
+      size: methodNameData.length,
+    ),
+  ]);
+  final dataCommand = machoSegment64AddressRangeCommand('__DATA', [
+    (
+      name: '__objc_data',
+      segmentName: '__DATA',
+      address: classAddress,
+      fileOffset: classOffset,
+      size: classData.length + metaclassData.length,
+    ),
+  ]);
+  final constCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_const',
+      segmentName: '__DATA_CONST',
+      address: classRoAddress,
+      fileOffset: classRoOffset,
+      size: classRoData.length + metaclassRoData.length + methodListData.length,
+    ),
+  ]);
+  final listCommand = machoSegment64AddressRangeCommand('__DATA_CONST', [
+    (
+      name: '__objc_classlist',
+      segmentName: '__DATA_CONST',
+      address: classListAddress,
+      fileOffset: classListOffset,
+      size: classListData.length,
+    ),
+  ]);
+
+  return [
+    ...machOHeader64(
+      ncmds: 4,
+      sizeofcmds:
+          textCommand.length +
+          dataCommand.length +
+          constCommand.length +
+          listCommand.length,
+    ),
+    ...textCommand,
+    ...dataCommand,
+    ...constCommand,
+    ...listCommand,
+    ...List.filled(paddingBeforeData, 0),
+    ...classNameData,
+    ...methodNameData,
+    ...classData,
+    ...metaclassData,
+    ...classRoData,
+    ...metaclassRoData,
+    ...methodListData,
     ...classListData,
   ];
 }
