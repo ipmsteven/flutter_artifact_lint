@@ -12,6 +12,7 @@ class MachOReport {
     this.sourceVersions = const [],
     this.codeSignatures = const [],
     this.encryptionInfos = const [],
+    this.entryPoints = const [],
     this.segments = const [],
     this.symbolTables = const [],
     this.symbols = const [],
@@ -43,6 +44,7 @@ class MachOReport {
   final List<MachOSourceVersion> sourceVersions;
   final List<MachOCodeSignature> codeSignatures;
   final List<MachOEncryptionInfo> encryptionInfos;
+  final List<MachOEntryPoint> entryPoints;
   final List<MachOSegment> segments;
   final List<MachOSymbolTable> symbolTables;
   final List<MachOSymbol> symbols;
@@ -160,6 +162,13 @@ class MachOEncryptionInfo {
   final int cryptId;
 
   bool get encrypted => cryptId != 0;
+}
+
+class MachOEntryPoint {
+  const MachOEntryPoint({required this.entryOffset, required this.stackSize});
+
+  final int entryOffset;
+  final int stackSize;
 }
 
 class MachOSegment {
@@ -468,6 +477,7 @@ class MachOParser {
       thinReport.sourceVersions,
       thinReport.codeSignatures,
       thinReport.encryptionInfos,
+      thinReport.entryPoints,
       thinReport.segments,
       thinReport.symbolTables,
       thinReport.symbols,
@@ -527,6 +537,7 @@ class MachOParser {
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
+    final entryPoints = <MachOEntryPoint>[];
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
@@ -575,6 +586,7 @@ class MachOParser {
       sourceVersions.addAll(sliceReport.sourceVersions);
       codeSignatures.addAll(sliceReport.codeSignatures);
       encryptionInfos.addAll(sliceReport.encryptionInfos);
+      entryPoints.addAll(sliceReport.entryPoints);
       segments.addAll(sliceReport.segments);
       symbolTables.addAll(sliceReport.symbolTables);
       symbols.addAll(sliceReport.symbols);
@@ -607,6 +619,7 @@ class MachOParser {
       sourceVersions,
       codeSignatures,
       encryptionInfos,
+      entryPoints,
       segments,
       symbolTables,
       symbols,
@@ -796,6 +809,7 @@ class MachOParser {
       report.sourceVersions,
       report.codeSignatures,
       report.encryptionInfos,
+      report.entryPoints,
       report.segments,
       report.symbolTables,
       [...report.symbols, ...symbols],
@@ -848,6 +862,7 @@ class MachOParser {
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
+    final entryPoints = <MachOEntryPoint>[];
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final symbols = <MachOSymbol>[];
@@ -893,6 +908,7 @@ class MachOParser {
         sourceVersions.addAll(sliceReport.sourceVersions);
         codeSignatures.addAll(sliceReport.codeSignatures);
         encryptionInfos.addAll(sliceReport.encryptionInfos);
+        entryPoints.addAll(sliceReport.entryPoints);
         segments.addAll(sliceReport.segments);
         symbolTables.addAll(sliceReport.symbolTables);
         symbols.addAll(sliceReport.symbols);
@@ -928,6 +944,7 @@ class MachOParser {
       sourceVersions,
       codeSignatures,
       encryptionInfos,
+      entryPoints,
       segments,
       symbolTables,
       symbols,
@@ -968,6 +985,7 @@ class MachOParser {
     final sourceVersions = <MachOSourceVersion>[];
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
+    final entryPoints = <MachOEntryPoint>[];
     final segments = <MachOSegment>[];
     final symbolTables = <MachOSymbolTable>[];
     final dynamicSymbolTables = <MachODynamicSymbolTable>[];
@@ -1149,6 +1167,15 @@ class MachOParser {
         );
       }
 
+      if (command == _lcMain && commandSize >= 24) {
+        entryPoints.add(
+          MachOEntryPoint(
+            entryOffset: _readU64(bytes, offset + 8),
+            stackSize: _readU64(bytes, offset + 16),
+          ),
+        );
+      }
+
       offset += commandSize;
     }
 
@@ -1225,6 +1252,7 @@ class MachOParser {
       sourceVersions: sourceVersions,
       codeSignatures: codeSignatures,
       encryptionInfos: encryptionInfos,
+      entryPoints: entryPoints,
       segments: segments,
       symbolTables: symbolTables,
       symbols: symbols,
@@ -1259,6 +1287,7 @@ MachOReport _deduplicatedReport(
   List<MachOSourceVersion> sourceVersions = const [],
   List<MachOCodeSignature> codeSignatures = const [],
   List<MachOEncryptionInfo> encryptionInfos = const [],
+  List<MachOEntryPoint> entryPoints = const [],
   List<MachOSegment> segments = const [],
   List<MachOSymbolTable> symbolTables = const [],
   List<MachOSymbol> symbols = const [],
@@ -1330,6 +1359,12 @@ MachOReport _deduplicatedReport(
   for (final encryptionInfo in encryptionInfos) {
     byEncryptionInfo['${encryptionInfo.cryptOffset}|${encryptionInfo.cryptSize}|${encryptionInfo.cryptId}'] =
         encryptionInfo;
+  }
+
+  final byEntryPoint = <String, MachOEntryPoint>{};
+  for (final entryPoint in entryPoints) {
+    byEntryPoint['${entryPoint.entryOffset}|${entryPoint.stackSize}'] =
+        entryPoint;
   }
 
   final sectionsBySegment = <String, Map<String, MachOSection>>{};
@@ -1467,6 +1502,7 @@ MachOReport _deduplicatedReport(
     sourceVersions: bySourceVersion.values.toList(),
     codeSignatures: byCodeSignature.values.toList(),
     encryptionInfos: byEncryptionInfo.values.toList(),
+    entryPoints: byEntryPoint.values.toList(),
     segments: [
       for (final entry in sectionsBySegment.entries)
         MachOSegment(name: entry.key, sections: entry.value.values.toList()),
@@ -7036,6 +7072,7 @@ const _lcEncryptionInfo = 0x21;
 const _lcDyldInfo = 0x22;
 const _lcDyldInfoOnly = 0x80000022;
 const _lcLoadUpwardDylib = 0x80000023;
+const _lcMain = 0x80000028;
 const _lcSourceVersion = 0x2a;
 const _lcEncryptionInfo64 = 0x2c;
 const _lcBuildVersion = 0x32;

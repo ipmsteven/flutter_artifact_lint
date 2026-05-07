@@ -109,6 +109,8 @@ This document lists the public rule IDs emitted by `flutter_artifact_lint`.
 `ios.macho.encryption_info` reports `LC_ENCRYPTION_INFO` FairPlay encryption
 offset, size, and crypt id metadata.
 
+`ios.macho.entry_point` reports `LC_MAIN` entry offset and stack size metadata.
+
 `ios.signing.unavailable` reports that signing state is unavailable for an unsigned artifact.
 
 `ios.signing.present` reports that signing data appears to be present.
@@ -133,10 +135,11 @@ or simulator platform metadata.
 
 Additional diagnostic metadata is parsed from `LC_RPATH`, `LC_ID_DYLIB`,
 `LC_UUID`, `LC_SOURCE_VERSION`, `LC_CODE_SIGNATURE`, and
-`LC_ENCRYPTION_INFO`. `LC_CODE_SIGNATURE` currently reports only the linkedit
-offset and size; it does not validate the signature blob or parse embedded
-entitlements. `LC_ENCRYPTION_INFO` reports FairPlay encryption offsets and
-crypt id metadata; it does not decrypt or validate encrypted content.
+`LC_ENCRYPTION_INFO`, and `LC_MAIN`. `LC_CODE_SIGNATURE` currently reports only
+the linkedit offset and size; it does not validate the signature blob or parse
+embedded entitlements. `LC_ENCRYPTION_INFO` reports FairPlay encryption offsets
+and crypt id metadata; it does not decrypt or validate encrypted content.
+`LC_MAIN` reports the executable entry offset and stack size.
 
 Segment and section names are parsed from `LC_SEGMENT` and `LC_SEGMENT_64` as
 structured parser metadata. Section, symbol, selector, class, protocol, and

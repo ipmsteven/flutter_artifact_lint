@@ -736,6 +736,7 @@ List<LintFinding> _machoMetadataInfo(EvidenceReport evidence) {
       MachOMetadataKind.sourceVersion => 'ios.macho.source_version',
       MachOMetadataKind.codeSignature => 'ios.macho.code_signature',
       MachOMetadataKind.encryptionInfo => 'ios.macho.encryption_info',
+      MachOMetadataKind.entryPoint => 'ios.macho.entry_point',
     };
     return buildFinding(
       ruleId,

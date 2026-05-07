@@ -63,6 +63,7 @@ enum MachOMetadataKind {
   sourceVersion,
   codeSignature,
   encryptionInfo,
+  entryPoint,
 }
 
 class MachOMetadataEvidence {
@@ -203,6 +204,17 @@ class IosEvidenceExtractor {
             sourcePath: entity.path,
             value:
                 'offset ${encryptionInfo.cryptOffset}, size ${encryptionInfo.cryptSize}, crypt id ${encryptionInfo.cryptId}',
+          ),
+        );
+      }
+
+      for (final entryPoint in machoReport.entryPoints) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.entryPoint,
+            sourcePath: entity.path,
+            value:
+                'entry offset ${entryPoint.entryOffset}, stack size ${entryPoint.stackSize}',
           ),
         );
       }

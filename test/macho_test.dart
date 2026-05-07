@@ -258,6 +258,16 @@ void main() {
       expect(report.encryptionInfos.single.encrypted, isFalse);
     });
 
+    test('reads LC_MAIN entry point metadata', () {
+      final report = const MachOParser().parse(
+        thinMachO([machoMainCommand(entryOffset: 0x1234, stackSize: 0x4000)]),
+      );
+
+      expect(report.entryPoints, hasLength(1));
+      expect(report.entryPoints.single.entryOffset, 0x1234);
+      expect(report.entryPoints.single.stackSize, 0x4000);
+    });
+
     test('reads LC_SEGMENT_64 segment and section names', () {
       final report = const MachOParser().parse(
         thinMachO([
@@ -4343,6 +4353,15 @@ List<int> machoEncryptionInfoCommand({
     ...u32(cryptSize),
     ...u32(cryptId),
     if (command == 0x2c) ...u32(0),
+  ];
+}
+
+List<int> machoMainCommand({required int entryOffset, required int stackSize}) {
+  return [
+    ...u32(0x80000028),
+    ...u32(24),
+    ...u64(entryOffset),
+    ...u64(stackSize),
   ];
 }
 

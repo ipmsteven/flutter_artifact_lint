@@ -146,6 +146,21 @@ void main() {
       expect(finding.message, contains('size 4096'));
       expect(finding.message, contains('crypt id 1'));
     });
+
+    test('reports entry point load command metadata', () async {
+      final result = await _scanAppWithMainBinary(
+        _machOBytes([
+          _machOMainCommand(entryOffset: 0x1234, stackSize: 0x4000),
+        ]),
+      );
+
+      final finding = result.info.singleWhere(
+        (finding) => finding.ruleId == 'ios.macho.entry_point',
+      );
+
+      expect(finding.message, contains('entry offset 4660'));
+      expect(finding.message, contains('stack size 16384'));
+    });
   });
 
   group('Mach-O architecture parser acceptance', () {
@@ -379,6 +394,18 @@ List<int> _machOEncryptionInfoCommand({
     ..._u32(cryptOffset),
     ..._u32(cryptSize),
     ..._u32(cryptId),
+  ];
+}
+
+List<int> _machOMainCommand({
+  required int entryOffset,
+  required int stackSize,
+}) {
+  return [
+    ..._u32(0x80000028),
+    ..._u32(24),
+    ..._u64(entryOffset),
+    ..._u64(stackSize),
   ];
 }
 
