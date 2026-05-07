@@ -261,6 +261,31 @@ const ruleRegistry = <String, RuleDefinition>{
     description: 'Reports LC_MAIN entry offset and stack size metadata.',
     fix: 'No action required.',
   ),
+  'ios.macho.routines': RuleDefinition(
+    ruleId: 'ios.macho.routines',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O routines',
+    description:
+        'Reports LC_ROUTINES and LC_ROUTINES_64 initialization metadata.',
+    fix: 'No action required.',
+  ),
+  'ios.macho.twolevel_hints': RuleDefinition(
+    ruleId: 'ios.macho.twolevel_hints',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O two-level hints',
+    description: 'Reports LC_TWOLEVEL_HINTS offset and count metadata.',
+    fix: 'No action required.',
+  ),
+  'ios.macho.prebind_checksum': RuleDefinition(
+    ruleId: 'ios.macho.prebind_checksum',
+    defaultLevel: FindingLevel.info,
+    source: RuleSource.artifact,
+    title: 'Mach-O prebind checksum',
+    description: 'Reports LC_PREBIND_CKSUM metadata.',
+    fix: 'No action required.',
+  ),
   'ios.macho.chained_fixups': RuleDefinition(
     ruleId: 'ios.macho.chained_fixups',
     defaultLevel: FindingLevel.info,

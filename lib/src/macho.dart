@@ -21,6 +21,9 @@ class MachOReport {
     this.codeSignatures = const [],
     this.encryptionInfos = const [],
     this.entryPoints = const [],
+    this.routines = const [],
+    this.twolevelHints = const [],
+    this.prebindChecksums = const [],
     this.functionStarts = const [],
     this.dataInCode = const [],
     this.segments = const [],
@@ -64,6 +67,9 @@ class MachOReport {
   final List<MachOCodeSignature> codeSignatures;
   final List<MachOEncryptionInfo> encryptionInfos;
   final List<MachOEntryPoint> entryPoints;
+  final List<MachORoutines> routines;
+  final List<MachOTwolevelHints> twolevelHints;
+  final List<MachOPrebindChecksum> prebindChecksums;
   final List<MachOFunctionStarts> functionStarts;
   final List<MachODataInCode> dataInCode;
   final List<MachOSegment> segments;
@@ -316,6 +322,37 @@ class MachOEntryPoint {
 
   final int entryOffset;
   final int stackSize;
+}
+
+class MachORoutines {
+  const MachORoutines({
+    required this.command,
+    required this.initAddress,
+    required this.initModule,
+  });
+
+  final int command;
+  final int initAddress;
+  final int initModule;
+
+  String get commandName => switch (command) {
+    _lcRoutines => 'LC_ROUTINES',
+    _lcRoutines64 => 'LC_ROUTINES_64',
+    _ => 'LC 0x${command.toRadixString(16)}',
+  };
+}
+
+class MachOTwolevelHints {
+  const MachOTwolevelHints({required this.offset, required this.hintsCount});
+
+  final int offset;
+  final int hintsCount;
+}
+
+class MachOPrebindChecksum {
+  const MachOPrebindChecksum({required this.checksum});
+
+  final int checksum;
 }
 
 class MachOFunctionStarts {
@@ -731,6 +768,9 @@ class MachOParser {
       thinReport.codeSignatures,
       thinReport.encryptionInfos,
       thinReport.entryPoints,
+      thinReport.routines,
+      thinReport.twolevelHints,
+      thinReport.prebindChecksums,
       thinReport.functionStarts,
       thinReport.dataInCode,
       thinReport.segments,
@@ -802,6 +842,9 @@ class MachOParser {
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
+    final routines = <MachORoutines>[];
+    final twolevelHints = <MachOTwolevelHints>[];
+    final prebindChecksums = <MachOPrebindChecksum>[];
     final functionStarts = <MachOFunctionStarts>[];
     final dataInCode = <MachODataInCode>[];
     final segments = <MachOSegment>[];
@@ -862,6 +905,9 @@ class MachOParser {
       codeSignatures.addAll(sliceReport.codeSignatures);
       encryptionInfos.addAll(sliceReport.encryptionInfos);
       entryPoints.addAll(sliceReport.entryPoints);
+      routines.addAll(sliceReport.routines);
+      twolevelHints.addAll(sliceReport.twolevelHints);
+      prebindChecksums.addAll(sliceReport.prebindChecksums);
       functionStarts.addAll(sliceReport.functionStarts);
       dataInCode.addAll(sliceReport.dataInCode);
       segments.addAll(sliceReport.segments);
@@ -906,6 +952,9 @@ class MachOParser {
       codeSignatures,
       encryptionInfos,
       entryPoints,
+      routines,
+      twolevelHints,
+      prebindChecksums,
       functionStarts,
       dataInCode,
       segments,
@@ -1142,6 +1191,9 @@ class MachOParser {
       report.codeSignatures,
       report.encryptionInfos,
       report.entryPoints,
+      report.routines,
+      report.twolevelHints,
+      report.prebindChecksums,
       functionStarts,
       dataInCode,
       report.segments,
@@ -1206,6 +1258,9 @@ class MachOParser {
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
+    final routines = <MachORoutines>[];
+    final twolevelHints = <MachOTwolevelHints>[];
+    final prebindChecksums = <MachOPrebindChecksum>[];
     final functionStarts = <MachOFunctionStarts>[];
     final dataInCode = <MachODataInCode>[];
     final segments = <MachOSegment>[];
@@ -1263,6 +1318,9 @@ class MachOParser {
         codeSignatures.addAll(sliceReport.codeSignatures);
         encryptionInfos.addAll(sliceReport.encryptionInfos);
         entryPoints.addAll(sliceReport.entryPoints);
+        routines.addAll(sliceReport.routines);
+        twolevelHints.addAll(sliceReport.twolevelHints);
+        prebindChecksums.addAll(sliceReport.prebindChecksums);
         functionStarts.addAll(sliceReport.functionStarts);
         dataInCode.addAll(sliceReport.dataInCode);
         segments.addAll(sliceReport.segments);
@@ -1310,6 +1368,9 @@ class MachOParser {
       codeSignatures,
       encryptionInfos,
       entryPoints,
+      routines,
+      twolevelHints,
+      prebindChecksums,
       functionStarts,
       dataInCode,
       segments,
@@ -1368,6 +1429,9 @@ class MachOParser {
     final codeSignatures = <MachOCodeSignature>[];
     final encryptionInfos = <MachOEncryptionInfo>[];
     final entryPoints = <MachOEntryPoint>[];
+    final routines = <MachORoutines>[];
+    final twolevelHints = <MachOTwolevelHints>[];
+    final prebindChecksums = <MachOPrebindChecksum>[];
     final functionStarts = <MachOFunctionStarts>[];
     final dataInCode = <MachODataInCode>[];
     final segments = <MachOSegment>[];
@@ -1651,6 +1715,41 @@ class MachOParser {
         );
       }
 
+      if (command == _lcRoutines && commandSize >= 40) {
+        routines.add(
+          MachORoutines(
+            command: command,
+            initAddress: _readU32(bytes, offset + 8),
+            initModule: _readU32(bytes, offset + 12),
+          ),
+        );
+      }
+
+      if (command == _lcRoutines64 && commandSize >= 72) {
+        routines.add(
+          MachORoutines(
+            command: command,
+            initAddress: _readU64(bytes, offset + 8),
+            initModule: _readU64(bytes, offset + 16),
+          ),
+        );
+      }
+
+      if (command == _lcTwolevelHints && commandSize >= 16) {
+        twolevelHints.add(
+          MachOTwolevelHints(
+            offset: _readU32(bytes, offset + 8),
+            hintsCount: _readU32(bytes, offset + 12),
+          ),
+        );
+      }
+
+      if (command == _lcPrebindChecksum && commandSize >= 12) {
+        prebindChecksums.add(
+          MachOPrebindChecksum(checksum: _readU32(bytes, offset + 8)),
+        );
+      }
+
       if (command == _lcFunctionStarts && commandSize >= 16) {
         functionStarts.add(
           MachOFunctionStarts(
@@ -1771,6 +1870,9 @@ class MachOParser {
       codeSignatures: codeSignatures,
       encryptionInfos: encryptionInfos,
       entryPoints: entryPoints,
+      routines: routines,
+      twolevelHints: twolevelHints,
+      prebindChecksums: prebindChecksums,
       functionStarts: functionStartMetadata,
       dataInCode: dataInCodeMetadata,
       segments: segments,
@@ -1817,6 +1919,9 @@ MachOReport _deduplicatedReport(
   List<MachOCodeSignature> codeSignatures = const [],
   List<MachOEncryptionInfo> encryptionInfos = const [],
   List<MachOEntryPoint> entryPoints = const [],
+  List<MachORoutines> routines = const [],
+  List<MachOTwolevelHints> twolevelHints = const [],
+  List<MachOPrebindChecksum> prebindChecksums = const [],
   List<MachOFunctionStarts> functionStarts = const [],
   List<MachODataInCode> dataInCode = const [],
   List<MachOSegment> segments = const [],
@@ -1941,6 +2046,22 @@ MachOReport _deduplicatedReport(
   for (final entryPoint in entryPoints) {
     byEntryPoint['${entryPoint.entryOffset}|${entryPoint.stackSize}'] =
         entryPoint;
+  }
+
+  final byRoutines = <String, MachORoutines>{};
+  for (final routine in routines) {
+    byRoutines['${routine.command}|${routine.initAddress}|${routine.initModule}'] =
+        routine;
+  }
+
+  final byTwolevelHints = <String, MachOTwolevelHints>{};
+  for (final hints in twolevelHints) {
+    byTwolevelHints['${hints.offset}|${hints.hintsCount}'] = hints;
+  }
+
+  final byPrebindChecksum = <int, MachOPrebindChecksum>{};
+  for (final checksum in prebindChecksums) {
+    byPrebindChecksum[checksum.checksum] = checksum;
   }
 
   final byFunctionStarts = <String, MachOFunctionStarts>{};
@@ -2113,6 +2234,9 @@ MachOReport _deduplicatedReport(
     codeSignatures: byCodeSignature.values.toList(),
     encryptionInfos: byEncryptionInfo.values.toList(),
     entryPoints: byEntryPoint.values.toList(),
+    routines: byRoutines.values.toList(),
+    twolevelHints: byTwolevelHints.values.toList(),
+    prebindChecksums: byPrebindChecksum.values.toList(),
     functionStarts: byFunctionStarts.values.toList(),
     dataInCode: byDataInCode.values.toList(),
     segments: [
@@ -8277,11 +8401,15 @@ const _lcDysymtab = 0x0b;
 const _lcLoadDylib = 0x0c;
 const _lcIdDylib = 0x0d;
 const _lcLoadDylinker = 0x0e;
+const _lcRoutines = 0x11;
 const _lcSubFramework = 0x12;
 const _lcSubUmbrella = 0x13;
 const _lcSubClient = 0x14;
 const _lcSubLibrary = 0x15;
+const _lcTwolevelHints = 0x16;
+const _lcPrebindChecksum = 0x17;
 const _lcSegment64 = 0x19;
+const _lcRoutines64 = 0x1a;
 const _lcLoadWeakDylib = 0x80000018;
 const _lcUuid = 0x1b;
 const _lcRpath = 0x8000001c;

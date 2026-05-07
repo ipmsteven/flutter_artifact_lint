@@ -72,6 +72,9 @@ enum MachOMetadataKind {
   codeSignature,
   encryptionInfo,
   entryPoint,
+  routines,
+  twolevelHints,
+  prebindChecksum,
   chainedFixups,
   functionStarts,
   dataInCode,
@@ -310,6 +313,36 @@ class IosEvidenceExtractor {
         );
       }
 
+      for (final routines in machoReport.routines) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.routines,
+            sourcePath: entity.path,
+            value: _routinesValue(routines),
+          ),
+        );
+      }
+
+      for (final hints in machoReport.twolevelHints) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.twolevelHints,
+            sourcePath: entity.path,
+            value: _twolevelHintsValue(hints),
+          ),
+        );
+      }
+
+      for (final checksum in machoReport.prebindChecksums) {
+        machOMetadata.add(
+          MachOMetadataEvidence(
+            kind: MachOMetadataKind.prebindChecksum,
+            sourcePath: entity.path,
+            value: _prebindChecksumValue(checksum),
+          ),
+        );
+      }
+
       for (final chainedFixup in machoReport.chainedFixups) {
         if (chainedFixup.fixupsVersion == null) continue;
 
@@ -525,6 +558,22 @@ String _noteValue(MachONote note) {
 
 String _linkeditDataValue(MachOLinkeditData data) {
   return '${data.commandName}; offset ${data.dataOffset}; size ${data.dataSize}';
+}
+
+String _routinesValue(MachORoutines routines) {
+  return [
+    routines.commandName,
+    'init address ${routines.initAddress}',
+    'init module ${routines.initModule}',
+  ].join('; ');
+}
+
+String _twolevelHintsValue(MachOTwolevelHints hints) {
+  return 'offset ${hints.offset}; hints ${hints.hintsCount}';
+}
+
+String _prebindChecksumValue(MachOPrebindChecksum checksum) {
+  return 'checksum ${checksum.checksum}';
 }
 
 String _chainedFixupsValue(MachOChainedFixups chainedFixup) {

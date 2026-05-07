@@ -303,6 +303,28 @@ void main() {
       expect(report.entryPoints.single.stackSize, 0x4000);
     });
 
+    test('reads routines two-level hints and prebind checksum metadata', () {
+      final report = const MachOParser().parse(
+        thinMachO([
+          machoRoutinesCommand(initAddress: 0x1234, initModule: 2),
+          machoRoutines64Command(initAddress: 0x123456789, initModule: 3),
+          machoTwolevelHintsCommand(offset: 4096, hintsCount: 7),
+          machoPrebindChecksumCommand(checksum: 0xabcdef01),
+        ]),
+      );
+
+      expect(report.routines, hasLength(2));
+      expect(report.routines.first.commandName, 'LC_ROUTINES');
+      expect(report.routines.first.initAddress, 0x1234);
+      expect(report.routines.first.initModule, 2);
+      expect(report.routines.last.commandName, 'LC_ROUTINES_64');
+      expect(report.routines.last.initAddress, 0x123456789);
+      expect(report.routines.last.initModule, 3);
+      expect(report.twolevelHints.single.offset, 4096);
+      expect(report.twolevelHints.single.hintsCount, 7);
+      expect(report.prebindChecksums.single.checksum, 0xabcdef01);
+    });
+
     test('reads LC_SEGMENT_64 segment and section names', () {
       final report = const MachOParser().parse(
         thinMachO([
@@ -745,6 +767,32 @@ void main() {
       expect(report.subCommands.single.commandName, 'LC_SUB_UMBRELLA');
       expect(report.subCommands.single.value, 'CoreServices');
     });
+
+    test(
+      'reads routines two-level hints and prebind checksum metadata from the file-backed parser',
+      () {
+        final root = Directory.systemTemp.createTempSync('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachO([
+              machoRoutines64Command(initAddress: 0x2000, initModule: 4),
+              machoTwolevelHintsCommand(offset: 8192, hintsCount: 5),
+              machoPrebindChecksumCommand(checksum: 0x01020304),
+            ]),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(report.routines.single.commandName, 'LC_ROUTINES_64');
+        expect(report.routines.single.initAddress, 0x2000);
+        expect(report.routines.single.initModule, 4);
+        expect(report.twolevelHints.single.offset, 8192);
+        expect(report.twolevelHints.single.hintsCount, 5);
+        expect(report.prebindChecksums.single.checksum, 0x01020304);
+      },
+    );
 
     test(
       'reads generic linkedit data commands from the file-backed parser',
@@ -4996,6 +5044,43 @@ List<int> machoMainCommand({required int entryOffset, required int stackSize}) {
     ...u64(entryOffset),
     ...u64(stackSize),
   ];
+}
+
+List<int> machoRoutinesCommand({
+  required int initAddress,
+  required int initModule,
+}) {
+  return [
+    ...u32(0x11),
+    ...u32(40),
+    ...u32(initAddress),
+    ...u32(initModule),
+    for (var i = 0; i < 6; i += 1) ...u32(0),
+  ];
+}
+
+List<int> machoRoutines64Command({
+  required int initAddress,
+  required int initModule,
+}) {
+  return [
+    ...u32(0x1a),
+    ...u32(72),
+    ...u64(initAddress),
+    ...u64(initModule),
+    for (var i = 0; i < 6; i += 1) ...u64(0),
+  ];
+}
+
+List<int> machoTwolevelHintsCommand({
+  required int offset,
+  required int hintsCount,
+}) {
+  return [...u32(0x16), ...u32(16), ...u32(offset), ...u32(hintsCount)];
+}
+
+List<int> machoPrebindChecksumCommand({required int checksum}) {
+  return [...u32(0x17), ...u32(12), ...u32(checksum)];
 }
 
 List<int> machoSegment64Command(

@@ -131,6 +131,15 @@ offset, size, and crypt id metadata.
 
 `ios.macho.entry_point` reports `LC_MAIN` entry offset and stack size metadata.
 
+`ios.macho.routines` reports initialization routine metadata from `LC_ROUTINES`
+and `LC_ROUTINES_64`.
+
+`ios.macho.twolevel_hints` reports offset and count metadata from
+`LC_TWOLEVEL_HINTS`.
+
+`ios.macho.prebind_checksum` reports checksum metadata from
+`LC_PREBIND_CKSUM`.
+
 `ios.macho.chained_fixups` reports `LC_DYLD_CHAINED_FIXUPS` header and starts
 metadata.
 

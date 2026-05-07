@@ -175,6 +175,36 @@ void main() {
       expect(finding.message, contains('stack size 16384'));
     });
 
+    test(
+      'reports routines two-level hints and prebind checksum load command metadata',
+      () async {
+        final result = await _scanAppWithMainBinary(
+          _machOBytes([
+            _machORoutines64Command(initAddress: 0x2000, initModule: 4),
+            _machOTwolevelHintsCommand(offset: 8192, hintsCount: 5),
+            _machOPrebindChecksumCommand(checksum: 0x01020304),
+          ]),
+        );
+
+        final routinesFinding = result.info.singleWhere(
+          (finding) => finding.ruleId == 'ios.macho.routines',
+        );
+        final hintsFinding = result.info.singleWhere(
+          (finding) => finding.ruleId == 'ios.macho.twolevel_hints',
+        );
+        final checksumFinding = result.info.singleWhere(
+          (finding) => finding.ruleId == 'ios.macho.prebind_checksum',
+        );
+
+        expect(routinesFinding.message, contains('LC_ROUTINES_64'));
+        expect(routinesFinding.message, contains('init address 8192'));
+        expect(routinesFinding.message, contains('init module 4'));
+        expect(hintsFinding.message, contains('offset 8192'));
+        expect(hintsFinding.message, contains('hints 5'));
+        expect(checksumFinding.message, contains('16909060'));
+      },
+    );
+
     test('reports chained fixups starts metadata', () async {
       final result = await _scanAppWithMainBinary(_machOWithChainedFixups());
 
@@ -624,6 +654,30 @@ List<int> _machOMainCommand({
     ..._u64(entryOffset),
     ..._u64(stackSize),
   ];
+}
+
+List<int> _machORoutines64Command({
+  required int initAddress,
+  required int initModule,
+}) {
+  return [
+    ..._u32(0x1a),
+    ..._u32(72),
+    ..._u64(initAddress),
+    ..._u64(initModule),
+    for (var i = 0; i < 6; i += 1) ..._u64(0),
+  ];
+}
+
+List<int> _machOTwolevelHintsCommand({
+  required int offset,
+  required int hintsCount,
+}) {
+  return [..._u32(0x16), ..._u32(16), ..._u32(offset), ..._u32(hintsCount)];
+}
+
+List<int> _machOPrebindChecksumCommand({required int checksum}) {
+  return [..._u32(0x17), ..._u32(12), ..._u32(checksum)];
 }
 
 List<int> _machOWithChainedFixups() {
