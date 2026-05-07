@@ -103,6 +103,77 @@ let _ = CameraPurpose(label: "camera")
     },
     timeout: const Timeout(Duration(minutes: 3)),
   );
+
+  test(
+    'parses Objective-C superclass metadata from a real clang Mach-O binary',
+    () async {
+      if (!Platform.isMacOS) {
+        print('Skipping: clang Mach-O builds require macOS.');
+        return;
+      }
+      if (!_commandExists('xcrun')) {
+        print('Skipping: xcrun is not available on PATH.');
+        return;
+      }
+
+      final clang = await Process.run('xcrun', ['--find', 'clang']);
+      if (clang.exitCode != 0) {
+        print('Skipping: clang is not available through xcrun.');
+        return;
+      }
+
+      final tempDir = await Directory.systemTemp.createTemp(
+        'fal_objc_macho_e2e_',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      final source = File(p.join(tempDir.path, 'main.m'))
+        ..writeAsStringSync('''
+#import <Foundation/Foundation.h>
+
+@interface BaseHandler : NSObject
+@end
+@implementation BaseHandler
+@end
+
+@interface NotificationHandler : BaseHandler
+@end
+@implementation NotificationHandler
+@end
+
+int main(void) {
+  @autoreleasepool {
+    NotificationHandler *handler = [NotificationHandler new];
+    return handler == nil;
+  }
+}
+''');
+      final binary = File(p.join(tempDir.path, 'ObjCFixture'));
+      final build = await Process.run('xcrun', [
+        'clang',
+        '-fobjc-arc',
+        '-framework',
+        'Foundation',
+        source.path,
+        '-o',
+        binary.path,
+      ]).timeout(const Duration(minutes: 2));
+      expect(
+        build.exitCode,
+        0,
+        reason: 'clang failed\n${build.stdout}\n${build.stderr}',
+      );
+
+      final report = const MachOParser().parseFile(binary);
+      final subclass = report.objcClasses.singleWhere(
+        (objcClass) => objcClass.name == 'NotificationHandler',
+      );
+
+      expect(subclass.superclassName, 'BaseHandler');
+      expect(subclass.sourceSection, '__DATA_CONST.__objc_classlist');
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
 }
 
 bool _commandExists(String command) {
