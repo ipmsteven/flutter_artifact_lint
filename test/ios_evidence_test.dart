@@ -123,6 +123,33 @@ void main() {
   });
 
   test(
+    'reports parsed chained fixup import sources for token evidence',
+    () async {
+      final root = await Directory.systemTemp.createTemp('fal_evidence_');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final appPath = '${root.path}/Runner.app';
+      final binary = File('$appPath/Runner')..createSync(recursive: true);
+      binary.writeAsBytesSync(
+        thinMachOWithChainedFixupImports([
+          r'_OBJC_CLASS_$_UNUserNotificationCenter',
+        ]),
+      );
+
+      final report = const IosEvidenceExtractor(
+        tokens: ['UNUserNotificationCenter'],
+      ).collect(appPath);
+
+      expect(
+        report.sourcesFor([
+          'UNUserNotificationCenter',
+        ])['UNUserNotificationCenter'],
+        contains('${binary.path}#LC_DYLD_CHAINED_FIXUPS.imports'),
+      );
+    },
+  );
+
+  test(
     'reports parsed Objective-C selector reference sources for token evidence',
     () async {
       final root = await Directory.systemTemp.createTemp('fal_evidence_');
@@ -313,6 +340,29 @@ List<int> thinMachOWithDyldBindSymbols(List<String> symbols) {
     ...u32(0),
     ...command,
     ...bindInfo,
+  ];
+}
+
+List<int> thinMachOWithChainedFixupImports(List<String> symbols) {
+  final chainedFixups = chainedFixupsPayload(symbols);
+  const commandsSize = 16;
+  final dataOffset = 32 + commandsSize;
+  final command = machoChainedFixupsCommand(
+    dataOffset: dataOffset,
+    dataSize: chainedFixups.length,
+  );
+
+  return [
+    ...u32(0xfeedfacf),
+    ...u32(0x0100000c),
+    ...u32(0),
+    ...u32(2),
+    ...u32(1),
+    ...u32(command.length),
+    ...u32(0),
+    ...u32(0),
+    ...command,
+    ...chainedFixups,
   ];
 }
 
@@ -614,10 +664,37 @@ List<int> machoDyldInfoCommand({
   ];
 }
 
+List<int> machoChainedFixupsCommand({
+  required int dataOffset,
+  required int dataSize,
+}) {
+  return [...u32(0x80000034), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
+}
+
 List<int> dyldBindInfoBytes(List<String> symbols) {
   return [
     for (final symbol in symbols) ...[0x40, ...latin1.encode(symbol), 0, 0x90],
     0,
+  ];
+}
+
+List<int> chainedFixupsPayload(List<String> symbols) {
+  final symbolStrings = cStringBytes(symbols);
+  final symbolOffsets = stringOffsets(symbols);
+  const headerSize = 28;
+  final importsOffset = headerSize;
+  final symbolsOffset = importsOffset + 4 * symbols.length;
+
+  return [
+    ...u32(0),
+    ...u32(0),
+    ...u32(importsOffset),
+    ...u32(symbolsOffset),
+    ...u32(symbols.length),
+    ...u32(1),
+    ...u32(0),
+    for (final symbolOffset in symbolOffsets) ...u32(1 | (symbolOffset << 9)),
+    ...symbolStrings,
   ];
 }
 

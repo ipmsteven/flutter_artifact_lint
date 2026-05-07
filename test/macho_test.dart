@@ -350,6 +350,46 @@ void main() {
       },
     );
 
+    test('reads LC_DYLD_CHAINED_FIXUPS import symbols from bytes', () {
+      for (final importFormat in [1, 2, 3]) {
+        final report = const MachOParser().parse(
+          thinMachOWithChainedFixupImports([
+            r'_OBJC_CLASS_$_CLLocationManager',
+          ], importFormat: importFormat),
+        );
+
+        expect(
+          report.dyldBindSymbols.map((symbol) => symbol.name),
+          contains(r'_OBJC_CLASS_$_CLLocationManager'),
+          reason: 'import format $importFormat',
+        );
+      }
+    });
+
+    test(
+      'reads LC_DYLD_CHAINED_FIXUPS import symbols from the file-backed parser',
+      () async {
+        final root = await Directory.systemTemp.createTemp('fal_macho_');
+        addTearDown(() => root.deleteSync(recursive: true));
+
+        final file = File('${root.path}/Runner')
+          ..writeAsBytesSync(
+            thinMachOWithChainedFixupImports(
+              [r'_OBJC_CLASS_$_UNUserNotificationCenter'],
+              importFormat: 3,
+              paddingBeforeChainedFixups: 4096,
+            ),
+          );
+
+        final report = const MachOParser().parseFile(file);
+
+        expect(
+          report.dyldBindSymbols.single.name,
+          r'_OBJC_CLASS_$_UNUserNotificationCenter',
+        );
+      },
+    );
+
     test('reads C strings from Objective-C method sections', () {
       final report = const MachOParser().parse(
         thinMachOWithCStringSection(
@@ -754,6 +794,30 @@ List<int> thinMachOWithDyldBindSymbols(
     ...command,
     ...List.filled(paddingBeforeBindInfo, 0),
     ...bindInfo,
+  ];
+}
+
+List<int> thinMachOWithChainedFixupImports(
+  List<String> symbols, {
+  int importFormat = 1,
+  int paddingBeforeChainedFixups = 0,
+}) {
+  final chainedFixups = chainedFixupsPayload(
+    symbols,
+    importFormat: importFormat,
+  );
+  const commandsSize = 16;
+  final dataOffset = 32 + commandsSize + paddingBeforeChainedFixups;
+  final command = machoChainedFixupsCommand(
+    dataOffset: dataOffset,
+    dataSize: chainedFixups.length,
+  );
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
+    ...List.filled(paddingBeforeChainedFixups, 0),
+    ...chainedFixups,
   ];
 }
 
@@ -1356,11 +1420,64 @@ List<int> machoDyldInfoCommand({
   ];
 }
 
+List<int> machoChainedFixupsCommand({
+  required int dataOffset,
+  required int dataSize,
+}) {
+  return [...u32(0x80000034), ...u32(16), ...u32(dataOffset), ...u32(dataSize)];
+}
+
 List<int> dyldBindInfoBytes(List<String> symbols) {
   return [
     for (final symbol in symbols) ...[0x40, ...latin1.encode(symbol), 0, 0x90],
     0,
   ];
+}
+
+List<int> chainedFixupsPayload(
+  List<String> symbols, {
+  required int importFormat,
+}) {
+  final symbolStrings = cStringBytes(symbols);
+  final symbolOffsets = stringOffsets(symbols);
+  final entrySize = switch (importFormat) {
+    1 => 4,
+    2 => 8,
+    3 => 16,
+    _ => throw ArgumentError.value(importFormat, 'importFormat'),
+  };
+  const headerSize = 28;
+  final importsOffset = headerSize;
+  final symbolsOffset = importsOffset + entrySize * symbols.length;
+
+  return [
+    ...u32(0), // fixups_version
+    ...u32(0), // starts_offset
+    ...u32(importsOffset),
+    ...u32(symbolsOffset),
+    ...u32(symbols.length),
+    ...u32(importFormat),
+    ...u32(0), // uncompressed symbols
+    for (final symbolOffset in symbolOffsets)
+      ...chainedImportEntry(
+        importFormat: importFormat,
+        nameOffset: symbolOffset,
+      ),
+    ...symbolStrings,
+  ];
+}
+
+List<int> chainedImportEntry({
+  required int importFormat,
+  required int nameOffset,
+}) {
+  final raw = 1 | (nameOffset << 9);
+  return switch (importFormat) {
+    1 => u32(raw),
+    2 => [...u32(raw), ...u32(0)],
+    3 => [...u64(1 | (nameOffset << 32)), ...u64(0)],
+    _ => throw ArgumentError.value(importFormat, 'importFormat'),
+  };
 }
 
 List<int> nlist64Bytes(int stringIndex) {
