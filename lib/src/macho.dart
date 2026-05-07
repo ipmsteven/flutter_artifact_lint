@@ -248,6 +248,8 @@ class MachODyldInfo {
     required this.weakBindSize,
     required this.lazyBindOffset,
     required this.lazyBindSize,
+    required this.exportOffset,
+    required this.exportSize,
   });
 
   final int bindOffset;
@@ -256,6 +258,8 @@ class MachODyldInfo {
   final int weakBindSize;
   final int lazyBindOffset;
   final int lazyBindSize;
+  final int exportOffset;
+  final int exportSize;
 }
 
 class MachOChainedFixups {
@@ -529,6 +533,7 @@ class MachOParser {
       raf,
       fileOffset,
       availableLength,
+      dyldInfos: report.dyldInfos,
       exportsTries: report.dyldExportsTries,
     );
     final sectionStrings = _readSectionStringsFromFile(
@@ -823,6 +828,8 @@ class MachOParser {
             weakBindSize: _readU32(bytes, offset + 28),
             lazyBindOffset: _readU32(bytes, offset + 32),
             lazyBindSize: _readU32(bytes, offset + 36),
+            exportOffset: _readU32(bytes, offset + 40),
+            exportSize: _readU32(bytes, offset + 44),
           ),
         );
       }
@@ -905,6 +912,7 @@ class MachOParser {
     );
     final dyldExportSymbols = _readDyldExportSymbolsFromBytes(
       bytes,
+      dyldInfos: dyldInfos,
       exportsTries: dyldExportsTries,
     );
     final sectionStrings = _readSectionStringsFromBytes(
@@ -1059,7 +1067,7 @@ MachOReport _deduplicatedReport(
 
   final byDyldInfo = <String, MachODyldInfo>{};
   for (final dyldInfo in dyldInfos) {
-    byDyldInfo['${dyldInfo.bindOffset}|${dyldInfo.bindSize}|${dyldInfo.weakBindOffset}|${dyldInfo.weakBindSize}|${dyldInfo.lazyBindOffset}|${dyldInfo.lazyBindSize}'] =
+    byDyldInfo['${dyldInfo.bindOffset}|${dyldInfo.bindSize}|${dyldInfo.weakBindOffset}|${dyldInfo.weakBindSize}|${dyldInfo.lazyBindOffset}|${dyldInfo.lazyBindSize}|${dyldInfo.exportOffset}|${dyldInfo.exportSize}'] =
         dyldInfo;
   }
 
@@ -2928,25 +2936,32 @@ List<MachODyldExportSymbol> _readDyldExportSymbolsFromFile(
   RandomAccessFile raf,
   int fileOffset,
   int availableLength, {
+  required List<MachODyldInfo> dyldInfos,
   required List<MachODyldExportsTrie> exportsTries,
 }) {
   final symbols = <MachODyldExportSymbol>[];
-  for (final exportsTrie in exportsTries) {
-    if (!_canReadDyldInfoStream(
-      exportsTrie.dataOffset,
-      exportsTrie.dataSize,
-      availableLength,
-    )) {
-      continue;
-    }
-
+  for (final dyldInfo in dyldInfos) {
     symbols.addAll(
-      _parseDyldExportTrieSymbols(
-        _readRange(
-          raf,
-          fileOffset + exportsTrie.dataOffset,
-          exportsTrie.dataSize,
-        ),
+      _readDyldExportTrieSymbolStreamFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        dyldInfo.exportOffset,
+        dyldInfo.exportSize,
+        source: 'LC_DYLD_INFO.export',
+      ),
+    );
+  }
+
+  for (final exportsTrie in exportsTries) {
+    symbols.addAll(
+      _readDyldExportTrieSymbolStreamFromFile(
+        raf,
+        fileOffset,
+        availableLength,
+        exportsTrie.dataOffset,
+        exportsTrie.dataSize,
+        source: 'LC_DYLD_EXPORTS_TRIE',
       ),
     );
   }
@@ -2955,24 +2970,28 @@ List<MachODyldExportSymbol> _readDyldExportSymbolsFromFile(
 
 List<MachODyldExportSymbol> _readDyldExportSymbolsFromBytes(
   List<int> bytes, {
+  required List<MachODyldInfo> dyldInfos,
   required List<MachODyldExportsTrie> exportsTries,
 }) {
   final symbols = <MachODyldExportSymbol>[];
-  for (final exportsTrie in exportsTries) {
-    if (!_canReadDyldInfoStream(
-      exportsTrie.dataOffset,
-      exportsTrie.dataSize,
-      bytes.length,
-    )) {
-      continue;
-    }
-
+  for (final dyldInfo in dyldInfos) {
     symbols.addAll(
-      _parseDyldExportTrieSymbols(
-        bytes.sublist(
-          exportsTrie.dataOffset,
-          exportsTrie.dataOffset + exportsTrie.dataSize,
-        ),
+      _readDyldExportTrieSymbolStreamFromBytes(
+        bytes,
+        dyldInfo.exportOffset,
+        dyldInfo.exportSize,
+        source: 'LC_DYLD_INFO.export',
+      ),
+    );
+  }
+
+  for (final exportsTrie in exportsTries) {
+    symbols.addAll(
+      _readDyldExportTrieSymbolStreamFromBytes(
+        bytes,
+        exportsTrie.dataOffset,
+        exportsTrie.dataSize,
+        source: 'LC_DYLD_EXPORTS_TRIE',
       ),
     );
   }
@@ -3008,6 +3027,40 @@ List<MachODyldBindSymbol> _readDyldBindSymbolStreamFromBytes(
   }
 
   return _parseDyldBindSymbols(
+    bytes.sublist(streamOffset, streamOffset + streamSize),
+    source: source,
+  );
+}
+
+List<MachODyldExportSymbol> _readDyldExportTrieSymbolStreamFromFile(
+  RandomAccessFile raf,
+  int fileOffset,
+  int availableLength,
+  int streamOffset,
+  int streamSize, {
+  required String source,
+}) {
+  if (!_canReadDyldInfoStream(streamOffset, streamSize, availableLength)) {
+    return const [];
+  }
+
+  return _parseDyldExportTrieSymbols(
+    _readRange(raf, fileOffset + streamOffset, streamSize),
+    source: source,
+  );
+}
+
+List<MachODyldExportSymbol> _readDyldExportTrieSymbolStreamFromBytes(
+  List<int> bytes,
+  int streamOffset,
+  int streamSize, {
+  required String source,
+}) {
+  if (!_canReadDyldInfoStream(streamOffset, streamSize, bytes.length)) {
+    return const [];
+  }
+
+  return _parseDyldExportTrieSymbols(
     bytes.sublist(streamOffset, streamOffset + streamSize),
     source: source,
   );
@@ -3155,7 +3208,10 @@ List<int>? _zlibDecodeDyldInfo(List<int> bytes) {
   }
 }
 
-List<MachODyldExportSymbol> _parseDyldExportTrieSymbols(List<int> bytes) {
+List<MachODyldExportSymbol> _parseDyldExportTrieSymbols(
+  List<int> bytes, {
+  required String source,
+}) {
   final symbols = <MachODyldExportSymbol>[];
   final stack = <({int offset, String prefix})>[(offset: 0, prefix: '')];
   final visited = <int>{};
@@ -3176,12 +3232,7 @@ List<MachODyldExportSymbol> _parseDyldExportTrieSymbols(List<int> bytes) {
     if (terminalSize > 0) {
       if (!_rangeWithin(cursor, terminalSize, bytes.length)) continue;
       if (node.prefix.isNotEmpty) {
-        symbols.add(
-          MachODyldExportSymbol(
-            name: node.prefix,
-            source: 'LC_DYLD_EXPORTS_TRIE',
-          ),
-        );
+        symbols.add(MachODyldExportSymbol(name: node.prefix, source: source));
       }
       cursor += terminalSize;
     }

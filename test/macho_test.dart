@@ -435,6 +435,23 @@ void main() {
       );
     });
 
+    test('reads LC_DYLD_INFO export trie symbols from bytes', () {
+      final report = const MachOParser().parse(
+        thinMachOWithDyldInfoExportsTrie([
+          r'_OBJC_CLASS_$_AppDelegate',
+          '_UIApplicationOpenSettingsURLString',
+        ]),
+      );
+
+      expect(
+        report.dyldExportSymbols.map((symbol) => symbol.name),
+        containsAll([
+          r'_OBJC_CLASS_$_AppDelegate',
+          '_UIApplicationOpenSettingsURLString',
+        ]),
+      );
+    });
+
     test(
       'reads LC_DYLD_EXPORTS_TRIE symbols from the file-backed parser',
       () async {
@@ -905,6 +922,24 @@ List<int> thinMachOWithDyldExportsTrie(
     ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
     ...command,
     ...List.filled(paddingBeforeExportsTrie, 0),
+    ...exportsTrie,
+  ];
+}
+
+List<int> thinMachOWithDyldInfoExportsTrie(List<String> symbols) {
+  final exportsTrie = dyldExportsTrieBytes(symbols);
+  const commandsSize = 48;
+  final exportOffset = 32 + commandsSize;
+  final command = machoDyldInfoCommand(
+    bindOffset: 0,
+    bindSize: 0,
+    exportOffset: exportOffset,
+    exportSize: exportsTrie.length,
+  );
+
+  return [
+    ...machOHeader64(ncmds: 1, sizeofcmds: command.length),
+    ...command,
     ...exportsTrie,
   ];
 }
@@ -1491,6 +1526,8 @@ List<int> machoDyldInfoCommand({
   int weakBindSize = 0,
   int lazyBindOffset = 0,
   int lazyBindSize = 0,
+  int exportOffset = 0,
+  int exportSize = 0,
 }) {
   return [
     ...u32(0x80000022),
@@ -1503,8 +1540,8 @@ List<int> machoDyldInfoCommand({
     ...u32(weakBindSize),
     ...u32(lazyBindOffset),
     ...u32(lazyBindSize),
-    ...u32(0),
-    ...u32(0),
+    ...u32(exportOffset),
+    ...u32(exportSize),
   ];
 }
 
