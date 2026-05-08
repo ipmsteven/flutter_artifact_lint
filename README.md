@@ -145,3 +145,5 @@ dart pub publish --dry-run
 
 The package is distributed under the MIT License. Add `repository` or
 `homepage` metadata in `pubspec.yaml` once the public repository URL is final.
+
+For the full release process, see [`doc/release.md`](doc/release.md).
