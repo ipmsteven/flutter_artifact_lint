@@ -3,11 +3,13 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'macho.dart';
+import 'model.dart';
 
 class EvidenceReport {
   const EvidenceReport({
     required this.tokens,
     required this.sourcesByToken,
+    required this.sourceDetailsByToken,
     required this.scannedFiles,
     required this.architectures,
     required this.buildVersions,
@@ -16,6 +18,7 @@ class EvidenceReport {
 
   final Set<String> tokens;
   final Map<String, Set<String>> sourcesByToken;
+  final Map<String, Set<EvidenceSource>> sourceDetailsByToken;
   final List<String> scannedFiles;
   final List<MachOArchitectureEvidence> architectures;
   final List<MachOBuildVersionEvidence> buildVersions;
@@ -34,6 +37,26 @@ class EvidenceReport {
     }
     return result;
   }
+
+  Map<String, List<EvidenceSource>> sourceDetailsFor(
+    List<String> matchedTokens,
+  ) {
+    final result = <String, List<EvidenceSource>>{};
+    for (final token in matchedTokens) {
+      final sources = sourceDetailsByToken[token];
+      if (sources == null || sources.isEmpty) continue;
+      result[token] = sources.toList()..sort(_compareEvidenceSource);
+    }
+    return result;
+  }
+}
+
+int _compareEvidenceSource(EvidenceSource a, EvidenceSource b) {
+  final kind = a.kind.name.compareTo(b.kind.name);
+  if (kind != 0) return kind;
+  final path = a.path.compareTo(b.path);
+  if (path != 0) return path;
+  return (a.location ?? '').compareTo(b.location ?? '');
 }
 
 class MachOArchitectureEvidence {
@@ -110,14 +133,25 @@ class IosEvidenceExtractor {
   }) {
     final found = <String>{};
     final sources = <String, Set<String>>{};
+    final sourceDetails = <String, Set<EvidenceSource>>{};
     final scannedFiles = <String>[];
     final architectures = <MachOArchitectureEvidence>[];
     final buildVersions = <MachOBuildVersionEvidence>[];
     final machOMetadata = <MachOMetadataEvidence>[];
 
-    void addEvidence(String token, String sourcePath) {
+    void addEvidence(
+      String token,
+      EvidenceSourceKind kind,
+      String path, {
+      String? location,
+      String? legacySourcePath,
+    }) {
+      final source = EvidenceSource(kind: kind, path: path, location: location);
       found.add(token);
-      sources.putIfAbsent(token, () => <String>{}).add(sourcePath);
+      sources
+          .putIfAbsent(token, () => <String>{})
+          .add(legacySourcePath ?? source.displayPath);
+      sourceDetails.putIfAbsent(token, () => <EvidenceSource>{}).add(source);
     }
 
     for (final entity in Directory(
@@ -130,7 +164,7 @@ class IosEvidenceExtractor {
 
       final basename = p.basename(entity.path);
       if (basename.endsWith('.framework')) {
-        addEvidence(basename, entity.path);
+        addEvidence(basename, EvidenceSourceKind.bundleDirectory, entity.path);
       }
 
       if (entity is! File || _shouldSkip(entity.path)) continue;
@@ -148,9 +182,23 @@ class IosEvidenceExtractor {
 
       for (final dylib in machoReport.linkedDylibs) {
         final frameworkToken = _frameworkToken(dylib.path);
-        if (frameworkToken != null) addEvidence(frameworkToken, entity.path);
+        if (frameworkToken != null) {
+          addEvidence(
+            frameworkToken,
+            EvidenceSourceKind.machoLinkedDylib,
+            entity.path,
+            location: dylib.path,
+            legacySourcePath: entity.path,
+          );
+        }
         if (_isPrivateFrameworkPath(dylib.path)) {
-          addEvidence(dylib.path, entity.path);
+          addEvidence(
+            dylib.path,
+            EvidenceSourceKind.machoLinkedDylib,
+            entity.path,
+            location: dylib.path,
+            legacySourcePath: entity.path,
+          );
         }
       }
 
@@ -410,130 +458,245 @@ class IosEvidenceExtractor {
 
       for (final sectionString in machoReport.sectionStrings) {
         for (final token in _matchedTokens(sectionString.value, tokens)) {
-          addEvidence(token, '${entity.path}#${sectionString.sectionName}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoSectionString,
+            entity.path,
+            location: sectionString.sectionName,
+          );
         }
       }
 
       for (final swiftType in machoReport.swiftTypes) {
         for (final token in _matchedTokens(swiftType.name, tokens)) {
-          addEvidence(token, '${entity.path}#${swiftType.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoSwiftType,
+            entity.path,
+            location: swiftType.sourceSection,
+          );
         }
       }
 
       for (final protocol in machoReport.swiftProtocols) {
         for (final token in _matchedTokens(protocol.name, tokens)) {
-          addEvidence(token, '${entity.path}#${protocol.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoSwiftProtocol,
+            entity.path,
+            location: protocol.sourceSection,
+          );
         }
       }
 
       for (final conformance in machoReport.swiftProtocolConformances) {
         for (final token in _matchedTokens(conformance.typeName, tokens)) {
-          addEvidence(token, '${entity.path}#${conformance.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoSwiftProtocolConformance,
+            entity.path,
+            location: conformance.sourceSection,
+          );
         }
         for (final token in _matchedTokens(conformance.protocolName, tokens)) {
-          addEvidence(token, '${entity.path}#${conformance.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoSwiftProtocolConformance,
+            entity.path,
+            location: conformance.sourceSection,
+          );
         }
       }
 
       for (final field in machoReport.swiftFields) {
         for (final token in _matchedTokens(field.name, tokens)) {
-          addEvidence(token, '${entity.path}#${field.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoSwiftField,
+            entity.path,
+            location: field.sourceSection,
+          );
         }
         final ownerTypeName = field.ownerTypeName;
         if (ownerTypeName != null) {
           for (final token in _matchedTokens(ownerTypeName, tokens)) {
-            addEvidence(token, '${entity.path}#${field.sourceSection}');
+            addEvidence(
+              token,
+              EvidenceSourceKind.machoSwiftField,
+              entity.path,
+              location: field.sourceSection,
+            );
           }
         }
         final superclassTypeName = field.superclassTypeName;
         if (superclassTypeName != null) {
           for (final token in _matchedTokens(superclassTypeName, tokens)) {
-            addEvidence(token, '${entity.path}#${field.sourceSection}');
+            addEvidence(
+              token,
+              EvidenceSourceKind.machoSwiftField,
+              entity.path,
+              location: field.sourceSection,
+            );
           }
         }
         final fieldTypeName = field.fieldTypeName;
         if (fieldTypeName != null) {
           for (final token in _matchedTokens(fieldTypeName, tokens)) {
-            addEvidence(token, '${entity.path}#${field.sourceSection}');
+            addEvidence(
+              token,
+              EvidenceSourceKind.machoSwiftField,
+              entity.path,
+              location: field.sourceSection,
+            );
           }
         }
       }
 
       for (final symbol in machoReport.symbols) {
         for (final token in _matchedTokens(symbol.name, tokens)) {
-          addEvidence(token, '${entity.path}#LC_SYMTAB');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoSymbolTable,
+            entity.path,
+            location: 'LC_SYMTAB',
+          );
         }
       }
 
       for (final symbol in machoReport.dyldBindSymbols) {
         for (final token in _matchedTokens(symbol.name, tokens)) {
-          addEvidence(token, '${entity.path}#${symbol.source}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoDyldBindSymbol,
+            entity.path,
+            location: symbol.source,
+          );
         }
       }
 
       for (final symbol in machoReport.dyldExportSymbols) {
         for (final token in _matchedTokens(symbol.name, tokens)) {
-          addEvidence(token, '${entity.path}#${symbol.source}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoDyldExportSymbol,
+            entity.path,
+            location: symbol.source,
+          );
         }
       }
 
       for (final selector in machoReport.objcSelectors) {
         for (final token in _matchedTokens(selector.name, tokens)) {
-          addEvidence(token, '${entity.path}#${selector.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoObjcSelector,
+            entity.path,
+            location: selector.sourceSection,
+          );
         }
       }
 
       for (final objcClass in machoReport.objcClasses) {
         for (final token in _matchedTokens(objcClass.name, tokens)) {
-          addEvidence(token, '${entity.path}#${objcClass.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoObjcClass,
+            entity.path,
+            location: objcClass.sourceSection,
+          );
         }
         final superclassName = objcClass.superclassName;
         if (superclassName != null) {
           for (final token in _matchedTokens(superclassName, tokens)) {
-            addEvidence(token, '${entity.path}#${objcClass.sourceSection}');
+            addEvidence(
+              token,
+              EvidenceSourceKind.machoObjcClass,
+              entity.path,
+              location: objcClass.sourceSection,
+            );
           }
         }
       }
 
       for (final category in machoReport.objcCategories) {
         for (final token in _matchedTokens(category.name, tokens)) {
-          addEvidence(token, '${entity.path}#${category.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoObjcCategory,
+            entity.path,
+            location: category.sourceSection,
+          );
         }
         final className = category.className;
         if (className != null) {
           for (final token in _matchedTokens(className, tokens)) {
-            addEvidence(token, '${entity.path}#${category.sourceSection}');
+            addEvidence(
+              token,
+              EvidenceSourceKind.machoObjcCategory,
+              entity.path,
+              location: category.sourceSection,
+            );
           }
         }
       }
 
       for (final objcProtocol in machoReport.objcProtocols) {
         for (final token in _matchedTokens(objcProtocol.name, tokens)) {
-          addEvidence(token, '${entity.path}#${objcProtocol.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoObjcProtocol,
+            entity.path,
+            location: objcProtocol.sourceSection,
+          );
         }
       }
 
       for (final objcMethod in machoReport.objcMethods) {
         for (final token in _matchedTokens(objcMethod.name, tokens)) {
-          addEvidence(token, '${entity.path}#${objcMethod.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoObjcMethod,
+            entity.path,
+            location: objcMethod.sourceSection,
+          );
         }
       }
 
       for (final ivar in machoReport.objcIvars) {
         for (final token in _matchedTokens(ivar.name, tokens)) {
-          addEvidence(token, '${entity.path}#${ivar.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoObjcIvar,
+            entity.path,
+            location: ivar.sourceSection,
+          );
         }
         for (final token in _matchedTokens(ivar.typeEncoding, tokens)) {
-          addEvidence(token, '${entity.path}#${ivar.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoObjcIvar,
+            entity.path,
+            location: ivar.sourceSection,
+          );
         }
       }
 
       for (final property in machoReport.objcProperties) {
         for (final token in _matchedTokens(property.name, tokens)) {
-          addEvidence(token, '${entity.path}#${property.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoObjcProperty,
+            entity.path,
+            location: property.sourceSection,
+          );
         }
         for (final token in _matchedTokens(property.attributes, tokens)) {
-          addEvidence(token, '${entity.path}#${property.sourceSection}');
+          addEvidence(
+            token,
+            EvidenceSourceKind.machoObjcProperty,
+            entity.path,
+            location: property.sourceSection,
+          );
         }
       }
 
@@ -542,13 +705,14 @@ class IosEvidenceExtractor {
         tokens,
         chunkSize: _textChunkSize(maxBytesPerFile),
       )) {
-        addEvidence(token, entity.path);
+        addEvidence(token, EvidenceSourceKind.plainText, entity.path);
       }
     }
 
     return EvidenceReport(
       tokens: found,
       sourcesByToken: sources,
+      sourceDetailsByToken: sourceDetails,
       scannedFiles: scannedFiles,
       architectures: architectures,
       buildVersions: buildVersions,

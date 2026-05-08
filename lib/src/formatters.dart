@@ -66,6 +66,17 @@ void _writeSection(
           buffer.writeln('    ${entry.key}: ${entry.value.join(', ')}');
         }
       }
+      if (finding.evidenceSourceDetails.isNotEmpty) {
+        buffer.writeln('  Evidence Source Details:');
+        for (final entry in finding.evidenceSourceDetails.entries) {
+          final sources = entry.value
+              .map((source) {
+                return '${source.kind.name} ${source.displayPath}';
+              })
+              .join(', ');
+          buffer.writeln('    ${entry.key}: $sources');
+        }
+      }
     }
     buffer.writeln();
   }

@@ -4,6 +4,55 @@ enum FindingLevel { failed, warned, info }
 
 enum FailOn { failed, warned, none }
 
+enum EvidenceSourceKind {
+  bundleDirectory,
+  plainText,
+  machoLinkedDylib,
+  machoSectionString,
+  machoSwiftType,
+  machoSwiftProtocol,
+  machoSwiftProtocolConformance,
+  machoSwiftField,
+  machoSymbolTable,
+  machoDyldBindSymbol,
+  machoDyldExportSymbol,
+  machoObjcSelector,
+  machoObjcClass,
+  machoObjcCategory,
+  machoObjcProtocol,
+  machoObjcMethod,
+  machoObjcIvar,
+  machoObjcProperty,
+}
+
+class EvidenceSource {
+  const EvidenceSource({required this.kind, required this.path, this.location});
+
+  final EvidenceSourceKind kind;
+  final String path;
+  final String? location;
+
+  String get displayPath =>
+      location == null || location!.isEmpty ? path : '$path#$location';
+
+  Map<String, Object?> toJson() => {
+    'kind': kind.name,
+    'path': path,
+    if (location != null && location!.isNotEmpty) 'location': location,
+  };
+
+  @override
+  bool operator ==(Object other) {
+    return other is EvidenceSource &&
+        other.kind == kind &&
+        other.path == path &&
+        other.location == location;
+  }
+
+  @override
+  int get hashCode => Object.hash(kind, path, location);
+}
+
 class IosArtifact {
   const IosArtifact({
     required this.path,
@@ -32,6 +81,7 @@ class LintFinding {
     this.path,
     this.evidence = const [],
     this.evidenceSources = const {},
+    this.evidenceSourceDetails = const {},
   });
 
   final FindingLevel level;
@@ -42,6 +92,7 @@ class LintFinding {
   final String? path;
   final List<String> evidence;
   final Map<String, List<String>> evidenceSources;
+  final Map<String, List<EvidenceSource>> evidenceSourceDetails;
 
   Map<String, Object?> toJson() => {
     'level': level.name,
@@ -52,6 +103,11 @@ class LintFinding {
     if (path != null) 'path': path,
     if (evidence.isNotEmpty) 'evidence': evidence,
     if (evidenceSources.isNotEmpty) 'evidenceSources': evidenceSources,
+    if (evidenceSourceDetails.isNotEmpty)
+      'evidenceSourceDetails': evidenceSourceDetails.map(
+        (token, sources) =>
+            MapEntry(token, sources.map((source) => source.toJson()).toList()),
+      ),
   };
 }
 

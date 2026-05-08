@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_artifact_lint/src/ios_evidence.dart';
+import 'package:flutter_artifact_lint/src/model.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -23,6 +24,19 @@ void main() {
     expect(
       report.sourcesFor(['AVCaptureSession'])['AVCaptureSession'],
       contains(binary.path),
+    );
+    expect(
+      report.sourceDetailsFor(['AVCaptureSession'])['AVCaptureSession'],
+      contains(
+        isA<EvidenceSource>()
+            .having(
+              (source) => source.kind,
+              'kind',
+              EvidenceSourceKind.plainText,
+            )
+            .having((source) => source.path, 'path', binary.path)
+            .having((source) => source.location, 'location', isNull),
+      ),
     );
   });
 
@@ -344,6 +358,25 @@ void main() {
           'requestWhenInUseAuthorization',
         ])['requestWhenInUseAuthorization'],
         contains('${binary.path}#__DATA_CONST.__objc_selrefs'),
+      );
+      expect(
+        report.sourceDetailsFor([
+          'requestWhenInUseAuthorization',
+        ])['requestWhenInUseAuthorization'],
+        contains(
+          isA<EvidenceSource>()
+              .having(
+                (source) => source.kind,
+                'kind',
+                EvidenceSourceKind.machoObjcSelector,
+              )
+              .having((source) => source.path, 'path', binary.path)
+              .having(
+                (source) => source.location,
+                'location',
+                '__DATA_CONST.__objc_selrefs',
+              ),
+        ),
       );
     },
   );
