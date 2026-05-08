@@ -244,7 +244,7 @@ const _scenarios = [
     packages: [
       'shared_preferences:2.5.5',
       'path_provider:2.1.5',
-      'device_info_plus:13.1.0',
+      'device_info_plus:11.5.0',
     ],
     expectedRuleIds: ['ios.required_reason.disk_space'],
   ),
@@ -289,7 +289,7 @@ const _scenarios = [
       'local_auth:3.0.1',
       'shared_preferences:2.5.5',
       'path_provider:2.1.5',
-      'device_info_plus:13.1.0',
+      'device_info_plus:11.5.0',
       'flutter_blue_plus:2.3.1',
       'speech_to_text:7.3.0',
       'webview_flutter:4.13.1',
