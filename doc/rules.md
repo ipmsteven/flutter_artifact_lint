@@ -7,6 +7,12 @@ Rule levels are based on confidence:
 - `warned`: binary or bundle evidence that needs developer confirmation.
 - `info`: artifact inventory and parser metadata.
 
+Binary evidence findings include legacy `evidenceSources` path lists and typed
+`evidenceSourceDetails` entries in JSON output. Typed source details identify
+whether evidence came from fallback plain-text scanning, bundle directories,
+Mach-O linked dylibs, Objective-C metadata, Swift metadata, symbol tables, dyld
+bind/export metadata, or other parsed Mach-O structures.
+
 ## Baseline
 
 `baseline.unused` reports a baseline entry that did not match any current finding.

@@ -278,8 +278,14 @@ ignore:
       );
       final sources =
           contactsFinding['evidenceSources'] as Map<String, Object?>;
+      final sourceDetails =
+          contactsFinding['evidenceSourceDetails'] as Map<String, Object?>;
 
       expect(sources['CNContactStore'], contains(contactsBinary.path));
+      expect(
+        sourceDetails['CNContactStore'],
+        contains(equals({'kind': 'plainText', 'path': contactsBinary.path})),
+      );
 
       final textResult = await runCli([
         'ios',
@@ -289,6 +295,8 @@ ignore:
 
       expect(textResult.stdout, contains('Evidence Sources:'));
       expect(textResult.stdout, contains(contactsBinary.path));
+      expect(textResult.stdout, contains('Evidence Source Details:'));
+      expect(textResult.stdout, contains('plainText'));
     },
   );
 }

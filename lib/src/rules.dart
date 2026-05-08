@@ -46,6 +46,7 @@ class FindingBuilder {
     String? path,
     List<String> evidence = const [],
     Map<String, List<String>> evidenceSources = const {},
+    Map<String, List<EvidenceSource>> evidenceSourceDetails = const {},
   }) {
     final rule = registry[ruleId];
     if (rule == null) {
@@ -61,6 +62,7 @@ class FindingBuilder {
       path: path,
       evidence: evidence,
       evidenceSources: evidenceSources,
+      evidenceSourceDetails: evidenceSourceDetails,
     );
   }
 }
@@ -646,6 +648,7 @@ LintFinding buildFinding(
   String? path,
   List<String> evidence = const [],
   Map<String, List<String>> evidenceSources = const {},
+  Map<String, List<EvidenceSource>> evidenceSourceDetails = const {},
 }) {
   return findingBuilder.build(
     ruleId,
@@ -653,6 +656,7 @@ LintFinding buildFinding(
     path: path,
     evidence: evidence,
     evidenceSources: evidenceSources,
+    evidenceSourceDetails: evidenceSourceDetails,
   );
 }
 

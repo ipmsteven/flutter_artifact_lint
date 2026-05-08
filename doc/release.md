@@ -6,7 +6,8 @@ Use this checklist for every pub.dev release.
 
 1. Update `version` in `pubspec.yaml`.
 2. Update `CHANGELOG.md` with user-facing changes.
-3. Confirm `README.md` and `doc/rules.md` describe the released behavior.
+3. Confirm `README.md`, `doc/rules.md`, and `doc/testing.md` describe the
+   released behavior.
 4. Open a pull request and wait for the required GitHub checks:
    - `dart`
    - `ios-e2e`
@@ -23,6 +24,8 @@ dart test
 dart test integration_test
 dart pub publish --dry-run
 ```
+
+See `doc/testing.md` for the E2E shard commands used by CI.
 
 `dart pub publish --dry-run` must report `Package has 0 warnings.`
 

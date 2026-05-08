@@ -71,8 +71,11 @@ permission APIs without matching purpose strings, notification SDK/API evidence,
 required reason API traces without matching `PrivacyInfo.xcprivacy` categories,
 `UIWebView`, private selector strings, private framework links, simulator
 Mach-O slices, and dynamic code execution traces.
-JSON output and verbose text output include evidence source paths when binary
-tokens can be traced back to files in the artifact.
+JSON output and verbose text output include evidence source paths and typed
+source details when binary tokens can be traced back to files in the artifact.
+Typed source details distinguish fallback plain-text evidence from structured
+Mach-O evidence such as linked dylibs, Objective-C metadata, Swift metadata,
+and symbol tables.
 
 `info` findings describe the scanned artifact, bundle identity, version,
 Mach-O architecture, build, load-command, symbol, Objective-C, Swift, and
@@ -127,13 +130,14 @@ Mach-O parser and string-scanner gap matrix:
 dart test test/macho_test.dart test/string_scanner_gap_matrix_test.dart
 ```
 
-Real Flutter iOS build E2E test:
+iOS E2E tests require macOS, Flutter, and Xcode:
 
 ```bash
 dart test integration_test
 ```
 
-The E2E test requires macOS, Flutter, and Xcode.
+For a detailed list of the real Flutter build, Mach-O toolchain, and Flutter
+plugin matrix E2E scenarios, see [`doc/testing.md`](doc/testing.md).
 
 ## Publishing
 

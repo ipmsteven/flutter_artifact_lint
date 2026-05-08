@@ -458,6 +458,7 @@ List<LintFinding> _binaryEvidenceRules(
         path: infoPlistPath,
         evidence: matched,
         evidenceSources: evidence.sourcesFor(matched),
+        evidenceSourceDetails: evidence.sourceDetailsFor(matched),
       ),
     );
   }
@@ -551,6 +552,7 @@ List<LintFinding> _binaryEvidenceRules(
             '${notificationEvidence.join(' / ')} detected; notification authorization and push entitlements are runtime or signed-artifact concerns.',
         evidence: notificationEvidence,
         evidenceSources: evidence.sourcesFor(notificationEvidence),
+        evidenceSourceDetails: evidence.sourceDetailsFor(notificationEvidence),
       ),
     );
   }
@@ -567,6 +569,7 @@ List<LintFinding> _binaryEvidenceRules(
             '${matched.join(' / ')} detected, but ${rule.category} was not declared in PrivacyInfo.xcprivacy.',
         evidence: matched,
         evidenceSources: evidence.sourcesFor(matched),
+        evidenceSourceDetails: evidence.sourceDetailsFor(matched),
       ),
     );
   }
@@ -579,6 +582,7 @@ List<LintFinding> _binaryEvidenceRules(
         message: 'UIWebView traces were detected in the release artifact.',
         evidence: uiWebViewEvidence,
         evidenceSources: evidence.sourcesFor(uiWebViewEvidence),
+        evidenceSourceDetails: evidence.sourceDetailsFor(uiWebViewEvidence),
       ),
     );
   }
@@ -596,6 +600,9 @@ List<LintFinding> _binaryEvidenceRules(
             '${privateSelectorEvidence.join(' / ')} looks like private Apple API usage.',
         evidence: privateSelectorEvidence,
         evidenceSources: evidence.sourcesFor(privateSelectorEvidence),
+        evidenceSourceDetails: evidence.sourceDetailsFor(
+          privateSelectorEvidence,
+        ),
       ),
     );
   }
@@ -609,6 +616,9 @@ List<LintFinding> _binaryEvidenceRules(
             '${privateFrameworkEvidence.join(' / ')} links a private Apple framework.',
         evidence: privateFrameworkEvidence,
         evidenceSources: evidence.sourcesFor(privateFrameworkEvidence),
+        evidenceSourceDetails: evidence.sourceDetailsFor(
+          privateFrameworkEvidence,
+        ),
       ),
     );
   }
@@ -627,6 +637,7 @@ List<LintFinding> _binaryEvidenceRules(
             '${dynamicCodeEvidence.join(' / ')} detected in the release artifact.',
         evidence: dynamicCodeEvidence,
         evidenceSources: evidence.sourcesFor(dynamicCodeEvidence),
+        evidenceSourceDetails: evidence.sourceDetailsFor(dynamicCodeEvidence),
       ),
     );
   }
