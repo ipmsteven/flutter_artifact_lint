@@ -38,3 +38,29 @@ jobs:
 
       - name: Validate package
         run: dart pub publish --dry-run
+
+  ios-e2e:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show toolchain versions
+        run: |
+          flutter --version
+          dart --version
+          xcodebuild -version
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Run iOS integration tests
+        run: dart test integration_test --reporter expanded
