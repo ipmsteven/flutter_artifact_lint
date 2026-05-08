@@ -127,13 +127,14 @@ Mach-O parser and string-scanner gap matrix:
 dart test test/macho_test.dart test/string_scanner_gap_matrix_test.dart
 ```
 
-Real Flutter iOS build E2E test:
+iOS E2E tests require macOS, Flutter, and Xcode:
 
 ```bash
 dart test integration_test
 ```
 
-The E2E test requires macOS, Flutter, and Xcode.
+For a detailed list of the real Flutter build, Mach-O toolchain, and Flutter
+plugin matrix E2E scenarios, see [`doc/testing.md`](doc/testing.md).
 
 ## Publishing
 
