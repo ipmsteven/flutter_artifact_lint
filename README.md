@@ -139,5 +139,5 @@ Before publishing to pub.dev, run:
 dart pub publish --dry-run
 ```
 
-The package must include a root `LICENSE` file. Add `repository` or `homepage`
-metadata in `pubspec.yaml` once the public repository URL is final.
+The package is distributed under the MIT License. Add `repository` or
+`homepage` metadata in `pubspec.yaml` once the public repository URL is final.

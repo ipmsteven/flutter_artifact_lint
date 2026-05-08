@@ -4,3 +4,4 @@
 - Added deterministic failed rules, evidence-based warned rules, artifact
   inventory info rules, baseline support, JSON/text output, and Mach-O parser
   metadata coverage.
+- Added MIT license for pub.dev publication.
