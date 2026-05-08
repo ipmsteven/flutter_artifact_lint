@@ -19,8 +19,8 @@ void main() {
     }
   });
 
-  test('documents every registered rule in docs/rules.md', () {
-    final docs = File('docs/rules.md').readAsStringSync();
+  test('documents every registered rule in doc/rules.md', () {
+    final docs = File('doc/rules.md').readAsStringSync();
 
     for (final ruleId in ruleRegistry.keys) {
       expect(docs, contains('`$ruleId`'), reason: '$ruleId is undocumented');

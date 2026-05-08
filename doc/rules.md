@@ -1,6 +1,11 @@
 # Rules
 
 This document lists the public rule IDs emitted by `flutter_artifact_lint`.
+Rule levels are based on confidence:
+
+- `failed`: deterministic artifact errors that should block release.
+- `warned`: binary or bundle evidence that needs developer confirmation.
+- `info`: artifact inventory and parser metadata.
 
 ## Baseline
 
@@ -168,11 +173,19 @@ metadata.
 remaining cases that the current string scanner intentionally does not cover
 yet. The remaining gap cases are future parser acceptance targets.
 
-Mach-O load-command evidence is parsed for thin and fat/universal binaries. The
-parser currently reads `LC_LOAD_DYLIB`, `LC_LOAD_WEAK_DYLIB`,
-`LC_REEXPORT_DYLIB`, `LC_LOAD_UPWARD_DYLIB`, and `LC_LAZY_LOAD_DYLIB`. This lets
-the scanner report system framework evidence even when the framework name
-appears only in load-command metadata.
+Mach-O evidence is parsed for thin and fat/universal binaries. The parser
+structurally reads public Mach-O load-command families used by modern and legacy
+Apple toolchains, including dynamic library references, dylinker metadata,
+segments and sections, symbol tables, dyld bind/export metadata, chained fixups,
+linkedit data, target triples, fileset entries, thread commands, routines,
+legacy prebinding commands, code-signature offsets, encryption info, entry
+points, UUIDs, source versions, build versions, version-min commands, rpaths,
+linker options, and dyld environment strings.
+
+Dynamic library load commands are parsed from `LC_LOAD_DYLIB`,
+`LC_LOAD_WEAK_DYLIB`, `LC_REEXPORT_DYLIB`, `LC_LOAD_UPWARD_DYLIB`, and
+`LC_LAZY_LOAD_DYLIB`. This lets the scanner report system framework evidence
+even when the framework name appears only in load-command metadata.
 
 Mach-O architecture inventory is reported from thin and fat/universal headers.
 Mach-O header metadata reports the file type, 32-bit or 64-bit header shape,
@@ -184,14 +197,16 @@ Mach-O build metadata is parsed from `LC_BUILD_VERSION` and legacy
 The scanner warns when device release artifacts contain simulator architecture
 or simulator platform metadata.
 
-Additional diagnostic metadata is parsed from `LC_RPATH`, `LC_ID_DYLIB`,
-`LC_UUID`, `LC_SOURCE_VERSION`, `LC_LINKER_OPTION`, `LC_LOAD_DYLINKER`,
-`LC_DYLD_ENVIRONMENT`, `LC_NOTE`, `LC_CODE_SIGNATURE`, `LC_ENCRYPTION_INFO`,
-and `LC_MAIN`. `LC_NOTE` reports the note owner and referenced file range.
+Diagnostic metadata is parsed from `LC_RPATH`, `LC_ID_DYLIB`,
+`LC_LOAD_DYLINKER`, `LC_ID_DYLINKER`, `LC_DYLD_ENVIRONMENT`, `LC_UUID`,
+`LC_SOURCE_VERSION`, `LC_LINKER_OPTION`, `LC_NOTE`, `LC_CODE_SIGNATURE`,
+`LC_ENCRYPTION_INFO`, `LC_MAIN`, `LC_THREAD`, `LC_UNIXTHREAD`, `LC_ROUTINES`,
+`LC_ROUTINES_64`, `LC_TWOLEVEL_HINTS`, `LC_PREBIND_CKSUM`, `LC_TARGET_TRIPLE`,
+`LC_FILESET_ENTRY`, and `LC_SUB_*` commands. `LC_NOTE` reports the note owner
+and referenced file range.
 Generic linkedit data metadata is reported for `LC_SEGMENT_SPLIT_INFO`,
 `LC_DYLIB_CODE_SIGN_DRS`, `LC_LINKER_OPTIMIZATION_HINT`, `LC_ATOM_INFO`,
 `LC_FUNCTION_VARIANTS`, and `LC_FUNCTION_VARIANT_FIXUPS`.
-`LC_TARGET_TRIPLE` reports the compiler target triple string when present.
 `LC_CODE_SIGNATURE` currently reports only the linkedit offset and size; it does
 not validate the signature blob or parse embedded entitlements.
 `LC_ENCRYPTION_INFO` reports FairPlay encryption offsets and crypt id metadata;
@@ -262,5 +277,8 @@ pointers are normalized back to section virtual addresses when the target
 section is present.
 
 Codesign entitlements and provisioning metadata are not parsed yet. A signed
-artifact can contain push, app group, iCloud, associated-domain, or
-debug-entitlement state without any matching binary evidence token.
+artifact can contain push, app group, iCloud, associated-domain, keychain access
+group, or debug-entitlement state without any matching binary evidence token.
+Unsigned Flutter `.app` outputs are still useful for early binary and bundle
+checks, but they cannot prove final signing, provisioning, App Store
+distribution, or entitlement state.

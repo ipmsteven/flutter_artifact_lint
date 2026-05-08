@@ -52,6 +52,11 @@ Exit codes:
 
 ## Rule surface
 
+The iOS scanner combines bundle metadata, `Info.plist`, privacy manifest files,
+plain binary strings, and structured Mach-O metadata. It is designed to run
+before App Store upload so CI can stop obvious release problems early while
+still marking evidence-only risks as warnings.
+
 `failed` findings are deterministic release-artifact problems: missing or invalid
 `Info.plist`, placeholder purpose strings, missing export compliance, missing
 launch screen or orientations, global ATS arbitrary loads, inconsistent always
@@ -66,15 +71,20 @@ JSON output and verbose text output include evidence source paths when binary
 tokens can be traced back to files in the artifact.
 
 `info` findings describe the scanned artifact, bundle identity, version,
-Mach-O architecture/build/load-command metadata, and whether signing data is
-available. Unsigned Flutter `.app` outputs cannot prove final codesign,
-provisioning profile, or push entitlement state.
+Mach-O architecture, build, load-command, symbol, Objective-C, Swift, and
+linkedit metadata, and whether signing data is available.
 
 App extensions under `PlugIns/*.appex` are scanned as their own bundles for
 permission-purpose checks, so extension evidence is evaluated against the
 extension `Info.plist` instead of the main app `Info.plist`.
 
-All emitted rule IDs are documented in [`docs/rules.md`](docs/rules.md).
+Unsigned Flutter `.app` outputs cannot prove final codesign, provisioning
+profile, push entitlement, app group, iCloud, keychain access group, or
+associated-domain state. Run this tool before signing to catch binary and bundle
+issues early, then add a signed-artifact check before release if those
+entitlements matter.
+
+All emitted rule IDs are documented in [`doc/rules.md`](doc/rules.md).
 Required-reason API reason-code validation is based on Apple's
 `NSPrivacyAccessedAPIType` documentation checked on 2026-05-07.
 
@@ -120,3 +130,14 @@ dart test integration_test
 ```
 
 The E2E test requires macOS, Flutter, and Xcode.
+
+## Publishing
+
+Before publishing to pub.dev, run:
+
+```bash
+dart pub publish --dry-run
+```
+
+The package must include a root `LICENSE` file. Add `repository` or `homepage`
+metadata in `pubspec.yaml` once the public repository URL is final.
