@@ -1,7 +1,7 @@
 name: flutter_artifact_lint
 description: Build artifact linter for Flutter release outputs.
 version: 0.0.1
-# repository: https://github.com/my_org/my_repo
+repository: https://github.com/ipmsteven/flutter_artifact_lint
 
 environment:
   sdk: ^3.11.0
